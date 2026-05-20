@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Upload, Image as ImageIcon, Wand2, Download, Trash2, Layers, AlertCircle, Play, Stamp, Package, Key, Zap, Crown, Crop as CropIcon, CheckSquare, Square, ChevronDown, Maximize, FolderOpen, ChevronRight, Folder } from 'lucide-react';
+import { Upload, Image as ImageIcon, Wand2, Download, Trash2, Layers, AlertCircle, Play, Stamp, Package, Key, Zap, Crown, Crop as CropIcon, CheckSquare, Square, ChevronDown, Maximize, FolderOpen, ChevronRight, Folder, Film } from 'lucide-react';
 import 'react-image-crop/dist/ReactCrop.css';
 
 import { ProcessedImage, ProcessStatus, LogoSettings, ProcessingMode, AiModel, SlicedResult, SlicedPiece, LogoItem, BatchResult, FolderNode } from '@/lib/original/types';
@@ -1349,7 +1349,7 @@ export default function Home() {
             }`}
           >
             <span className="flex items-center gap-2">
-              <Play className="w-4 h-4" />
+              <Film className="w-4 h-4" />
               视频合成
             </span>
           </button>
@@ -1389,7 +1389,7 @@ export default function Home() {
           }`}
         >
           <span className="flex items-center gap-2">
-            <Play className="w-4 h-4" />
+            <Film className="w-4 h-4" />
             视频合成
           </span>
         </button>
