@@ -108,6 +108,9 @@ function yieldToEventLoop(): Promise<void> {
  * - 因此总时长 = imageDuration * images.length + transitionDuration * (images.length - 1)
  * - 但由于转场是重叠的，实际总帧数 = imageDuration * fps * images.length + transitionDuration * fps * (images.length - 1)
  *
+ * 重要：使用 captureStream(0) + requestFrame() 手动控制帧捕获，
+ * 并按目标帧率间隔渲染每帧，确保所有帧都被正确捕获和编码。
+ *
  * @param images - HTMLImageElement 图像数组
  * @param settings - 视频生成设置
  * @param onProgress - 进度回调函数
@@ -141,8 +144,6 @@ export async function generateVideo(
   const totalFrames = imageFrames * images.length + transitionFrames * (images.length - 1);
 
   // 每张图像在总时间线中的起始帧
-  // 图像 i 的起始帧 = i * (imageFrames + transitionFrames)
-  // 因为每张图像展示 imageFrames 帧，然后有 transitionFrames 帧的转场与下一张重叠
   const imageStartFrames: number[] = [];
   for (let i = 0; i < images.length; i++) {
     imageStartFrames.push(i * (imageFrames + transitionFrames));
@@ -166,13 +167,19 @@ export async function generateVideo(
   const transitionRenderer = TRANSITIONS[transition];
 
   // 根据质量计算比特率（vp9 编码）
-  // 基础比特率根据分辨率计算，然后乘以质量系数
   const pixels = width * height;
-  const baseBitrate = Math.round(pixels * fps * 0.1); // 基础比特率
-  const bitrate = Math.round(baseBitrate * (0.5 + quality * 1.5)); // 质量影响比特率
+  const baseBitrate = Math.round(pixels * fps * 0.1);
+  const bitrate = Math.round(baseBitrate * (0.5 + quality * 1.5));
 
-  // 设置 MediaRecorder
-  const stream = canvas.captureStream(fps);
+  // ── 关键修复：使用 captureStream(0) 手动控制帧捕获 ──
+  // captureStream(fps) 会按实际时间以 fps 速率自动捕获帧，
+  // 但如果渲染循环运行过快（远超实时），大部分帧会被跳过，
+  // 导致视频时长几乎为 0 且画面不完整。
+  // 使用 captureStream(0) 后，需手动调用 requestFrame() 来捕获每一帧，
+  // 并按正确的帧间隔调度渲染，确保每帧都被捕获且时间戳正确。
+  const stream = canvas.captureStream(0);
+  const videoTrack = stream.getVideoTracks()[0];
+
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
     : 'video/webm';
@@ -198,10 +205,13 @@ export async function generateVideo(
     percent: 0,
   });
 
-  // 开始录制
-  recorder.start();
+  // 开始录制，设定 timeslice 以定期获取数据，避免内存堆积
+  recorder.start(1000);
 
-  // 逐帧渲染
+  // 帧间隔（毫秒），用于控制渲染节奏和帧时间戳
+  const frameInterval = 1000 / fps;
+
+  // 逐帧渲染，按目标帧率间隔调度
   for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
     // 检查取消信号
     if (signal?.aborted) {
@@ -220,32 +230,28 @@ export async function generateVideo(
 
     for (let i = 0; i < images.length; i++) {
       const startFrame = imageStartFrames[i];
-      const endFrame = startFrame + imageFrames + transitionFrames; // 包含转场重叠部分
+      const endFrame = startFrame + imageFrames + transitionFrames;
 
       if (frameIndex >= startFrame && frameIndex < endFrame) {
         currentImageIndex = i;
 
-        // 判断是否在转场区域（当前图像展示期的最后 transitionFrames 帧）
         const transitionStartFrame = startFrame + imageFrames;
         if (i < images.length - 1 && frameIndex >= transitionStartFrame) {
           isInTransition = true;
           nextImageIndex = i + 1;
           transitionProgress = (frameIndex - transitionStartFrame) / transitionFrames;
-          // 限制进度范围在 0~1 之间
           transitionProgress = Math.min(1, Math.max(0, transitionProgress));
         }
         break;
       }
     }
 
-    // 如果没找到对应图像（理论上不应该发生），跳过
     if (currentImageIndex === -1) {
       continue;
     }
 
-    // 渲染当前帧
+    // 渲染当前帧到画布
     if (isInTransition && nextImageIndex !== -1) {
-      // 在转场区域，调用转场渲染函数
       transitionRenderer(
         ctx,
         images[currentImageIndex],
@@ -255,8 +261,12 @@ export async function generateVideo(
         height
       );
     } else {
-      // 不在转场区域，直接绘制当前图像
       drawImageCover(ctx, images[currentImageIndex], width, height);
+    }
+
+    // 手动请求捕获当前画布帧
+    if (videoTrack && 'requestFrame' in videoTrack) {
+      (videoTrack as any).requestFrame();
     }
 
     // 更新进度
@@ -267,8 +277,25 @@ export async function generateVideo(
       percent: Math.round(((frameIndex + 1) / totalFrames) * 100),
     });
 
-    // 每隔一定帧数让出事件循环，避免阻塞
-    if (frameIndex % Math.max(1, Math.round(fps / 2)) === 0) {
+    // ── 关键：按帧间隔等待，确保帧时间戳正确 ──
+    // 使用 requestAnimationFrame 实现与屏幕刷新同步的等待，
+    // 这样既保证帧时间戳间距接近 frameInterval，又不会阻塞 UI。
+    // 对于 30fps 视频，每帧约 33ms，RAF 约 16ms 一次，
+    // 所以每帧约等待 2 个 RAF 周期 ≈ 32ms，接近目标间隔。
+    await new Promise<void>((resolve) => {
+      const deadline = performance.now() + frameInterval;
+      const tick = () => {
+        if (performance.now() >= deadline) {
+          resolve();
+        } else {
+          requestAnimationFrame(tick);
+        }
+      };
+      requestAnimationFrame(tick);
+    });
+
+    // 每 30 帧额外让出一次事件循环，避免长时间占用主线程
+    if (frameIndex % 30 === 0) {
       await yieldToEventLoop();
     }
   }
@@ -280,6 +307,9 @@ export async function generateVideo(
     total: totalFrames,
     percent: 100,
   });
+
+  // 等待最后一帧被编码器处理
+  await new Promise(resolve => setTimeout(resolve, 200));
 
   // 停止录制并等待数据收集完成
   return new Promise<Blob>((resolve, reject) => {
