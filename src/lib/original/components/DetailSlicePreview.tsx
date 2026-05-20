@@ -103,9 +103,9 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
   }, [pieces, sourceFileName, downloadSingle]);
 
   return (
-    <div className="bg-gray-800 rounded-xl overflow-hidden border border-gray-700">
+    <div className="bg-gray-800/80 rounded-xl overflow-hidden border border-white/[0.06]">
       {/* Header */}
-      <div className="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+      <div className="px-4 py-3 bg-gray-800/60 border-b border-white/[0.06] flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium text-indigo-400 truncate">
             {sourceFileName}
@@ -145,7 +145,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
             <button
               onClick={handleBatchDownload}
               disabled={isZipping}
-              className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-lg transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/25 disabled:bg-indigo-800 text-white rounded-lg transition-colors flex items-center gap-1.5"
             >
               {isZipping ? (
                 <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -171,7 +171,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
             <span>正在切片...</span>
             <span>{progressCurrent}/{progressTotal}</span>
           </div>
-          <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-gray-700/50 backdrop-blur-sm rounded-full h-2 overflow-hidden">
             <div
               className="bg-indigo-500 h-full transition-all duration-300 ease-out"
               style={{ width: `${progressTotal ? ((progressCurrent || 0) / progressTotal) * 100 : 0}%` }}
@@ -186,7 +186,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
           {pieces.map((piece) => (
             <div
               key={piece.id}
-              className="group relative bg-gray-900 rounded-lg overflow-hidden border border-gray-700 hover:border-indigo-500/50 transition-all"
+              className="group relative bg-gray-900/80 rounded-lg overflow-hidden border border-white/[0.06] hover:border-indigo-400/40 hover:shadow-[0_4px_20px_-5px_rgba(99,102,241,0.15)] transition-all"
             >
               <div className="relative flex items-center justify-center bg-gray-950" style={{ aspectRatio: `${piece.width}/${piece.height}` }}>
                 <img
@@ -198,7 +198,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
                   #{piece.index + 1}
                 </div>
               </div>
-              <div className="px-2 py-1.5 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
+              <div className="px-2 py-1.5 bg-gray-800/60 border-t border-white/[0.06] flex items-center justify-between">
                 <span className="text-[10px] text-gray-500">
                   {piece.width}×{piece.height}
                 </span>
@@ -227,7 +227,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
       {/* Full-size Preview Modal */}
       {previewUrl && (
         <div
-          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
           onClick={() => setPreviewUrl(null)}
         >
           <div className="relative max-w-[90vw] max-h-[90vh]">
@@ -239,7 +239,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
             />
             <button
               onClick={() => setPreviewUrl(null)}
-              className="absolute -top-3 -right-3 p-2 bg-gray-800 hover:bg-gray-700 text-white rounded-full shadow-lg border border-gray-600 transition-colors"
+              className="absolute -top-3 -right-3 p-2 bg-gray-800/90 hover:bg-gray-700 text-white rounded-full shadow-lg border border-white/[0.08] shadow-lg transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -250,7 +250,7 @@ export const DetailSlicePreview: React.FC<DetailSlicePreviewProps> = ({
       {/* Node Preview Modal - shows original image with crop point markers */}
       {showNodePreview && sourceImageUrl && (
         <div
-          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
           onClick={() => setShowNodePreview(false)}
         >
           <div className="relative max-w-[80vw] max-h-[90vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>

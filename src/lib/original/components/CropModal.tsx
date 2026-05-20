@@ -156,9 +156,9 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 rounded-2xl w-full max-w-4xl flex flex-col max-h-[90vh] shadow-2xl border border-gray-800">
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl p-4">
+      <div className="bg-gray-900/95 rounded-2xl w-full max-w-4xl flex flex-col max-h-[90vh] shadow-2xl shadow-black/50 border border-white/[0.08]">
+        <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
           <h3 className="text-xl font-bold text-white">图片裁剪</h3>
           <button onClick={onClose} className="p-2 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors">
             <X className="w-5 h-5" />
@@ -167,7 +167,7 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
 
         <div
           ref={containerRef}
-          className="flex-1 overflow-hidden p-4 flex items-center justify-center bg-gray-950/50 relative select-none"
+          className="flex-1 overflow-hidden p-4 flex items-center justify-center bg-gray-950/80 relative select-none"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -198,7 +198,7 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
           </div>
 
           {/* Zoom controls */}
-          <div className="absolute bottom-6 right-6 flex flex-col items-center gap-1 bg-gray-800/80 backdrop-blur rounded-lg p-1 border border-gray-700/50">
+          <div className="absolute bottom-6 right-6 flex flex-col items-center gap-1 bg-gray-800/90 backdrop-blur-xl rounded-xl p-1.5 border border-white/[0.08] shadow-lg">
             <button onClick={zoomIn} disabled={scale >= MAX_SCALE} className="p-1.5 text-gray-300 hover:text-white disabled:text-gray-600 transition-colors rounded" title="放大">
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -230,7 +230,7 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
 
         </div>
 
-        <div className="p-4 border-t border-gray-800 bg-gray-900 rounded-b-2xl flex items-center justify-between">
+        <div className="p-4 border-t border-white/[0.06] bg-gray-900/95 rounded-b-2xl flex items-center justify-between">
           <div className="flex gap-2">
             {aspectRatios.map((ratio) => (
               <button
@@ -239,7 +239,7 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   aspect === ratio.value
                     ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    : 'bg-white/[0.05] text-gray-300 hover:bg-white/[0.1] border border-white/[0.06]'
                 }`}
               >
                 {ratio.label}
@@ -258,7 +258,7 @@ export function CropModal({ imageUrl, onClose, onSave, defaultAspect = undefined
             <button 
                 onClick={handleApplyCrop}
                 disabled={!completedCrop || isCropping}
-                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium flex items-center gap-2 transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium flex items-center gap-2 transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25"
             >
                 {isCropping ? (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

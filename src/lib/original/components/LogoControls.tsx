@@ -116,7 +116,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
   // Reusable editor area
   const renderEditorArea = (isLargeMode: boolean) => (
     <div
-        className={`${isLargeMode ? 'w-full h-full' : 'w-full h-48'} bg-gray-900 rounded-lg overflow-hidden border border-gray-600 flex items-center justify-center select-none`}
+        className={`${isLargeMode ? 'w-full h-full' : 'w-full h-48'} bg-gray-900/80 rounded-xl overflow-hidden border border-white/[0.06] flex items-center justify-center select-none`}
     >
         {previewImageUrl ? (
              <div
@@ -152,7 +152,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                     className="pointer-events-none"
                     >
                     <img src={previewLogoUrl} alt="Logo" className="w-full h-auto block" draggable={false} />
-                    <div className={`absolute inset-0 border-2 border-indigo-500 border-dashed transition-opacity ${isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
+                    <div className={`absolute inset-0 border-2 border-indigo-400 border-dashed transition-opacity ${isDragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
                     </div>
                 )}
 
@@ -211,7 +211,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                     type="number"
                     value={Math.round(settings.x)}
                     onChange={(e) => onSettingsChange({ ...settings, x: Number(e.target.value) })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+                    className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:border-indigo-500/50 focus:shadow-[0_0_8px_-2px_rgba(99,102,241,0.2)]"
                  />
             </div>
             <div>
@@ -220,7 +220,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                     type="number"
                     value={Math.round(settings.y)}
                     onChange={(e) => onSettingsChange({ ...settings, y: Number(e.target.value) })}
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white"
+                    className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg px-2 py-1 text-white focus:border-indigo-500/50 focus:shadow-[0_0_8px_-2px_rgba(99,102,241,0.2)]"
                  />
             </div>
        </div>
@@ -251,16 +251,16 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex flex-col items-center justify-center py-4 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer hover:bg-gray-700/50 hover:border-gray-500 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center py-4 border border-white/[0.08] border-dashed rounded-xl cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30 transition-all duration-200 group"
               >
-                <Plus className="w-5 h-5 mb-1 text-gray-400" />
+                <Plus className="w-5 h-5 mb-1 text-indigo-400/60 group-hover:text-indigo-400" />
                 <p className="text-xs text-gray-400">选择文件</p>
               </button>
               <button
                 onClick={() => folderInputRef.current?.click()}
-                className="flex-1 flex flex-col items-center justify-center py-4 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer hover:bg-gray-700/50 hover:border-gray-500 transition-colors"
+                className="flex-1 flex flex-col items-center justify-center py-4 border border-white/[0.08] border-dashed rounded-xl cursor-pointer hover:bg-white/[0.04] hover:border-indigo-500/30 transition-all duration-200 group"
               >
-                <FolderOpen className="w-5 h-5 mb-1 text-gray-400" />
+                <FolderOpen className="w-5 h-5 mb-1 text-indigo-400/60 group-hover:text-indigo-400" />
                 <p className="text-xs text-gray-400">选择文件夹</p>
               </button>
             </div>
@@ -283,7 +283,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                     onDrop={(e) => handleListDrop(e, index)}
                     onDragEnd={handleListDragEnd}
                     className={`flex items-center gap-2 p-1.5 rounded-lg border transition-all cursor-move ${
-                      overIdx === index ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700 bg-gray-800'
+                      overIdx === index ? 'border-indigo-400/60 bg-indigo-500/10' : 'border-white/[0.06] bg-white/[0.03]'
                     } ${dragIdx === index ? 'opacity-40' : ''}`}
                   >
                     <GripVertical className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 cursor-grab" />
@@ -291,7 +291,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                     <span className="text-xs text-gray-300 truncate flex-1">{logo.name}</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); onLogoRemove(logo.id); }}
-                      className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-gray-700 flex-shrink-0"
+                      className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10 flex-shrink-0"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -323,8 +323,8 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
 
         {/* Expanded Modal */}
         {isExpanded && (
-            <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 md:p-10 animate-fade-in">
-                <div className="bg-gray-900 w-full max-w-6xl h-full md:h-[90vh] rounded-2xl border border-gray-700 shadow-2xl flex flex-col md:flex-row overflow-hidden">
+            <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 md:p-10 animate-fade-in">
+                <div className="bg-gray-900/95 w-full max-w-6xl h-full md:h-[90vh] rounded-2xl border border-white/[0.08] shadow-2xl backdrop-blur-xl flex flex-col md:flex-row overflow-hidden">
 
                     <div className="flex-1 relative bg-gray-950 p-4 flex flex-col">
                         <div className="flex justify-between items-center mb-4 md:hidden">
@@ -341,7 +341,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                         </div>
                     </div>
 
-                    <div className="w-full md:w-80 bg-gray-800 p-6 flex flex-col border-l border-gray-700 overflow-y-auto">
+                    <div className="w-full md:w-80 bg-gray-800/60 p-6 flex flex-col border-l border-white/[0.06] overflow-y-auto">
                         <div className="flex justify-between items-center mb-8">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2">
                                 <Move className="w-6 h-6 text-indigo-400" />
@@ -360,7 +360,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                         <div className="mt-auto pt-8">
                             <button
                                 onClick={() => setIsExpanded(false)}
-                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium flex items-center justify-center gap-2"
+                                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2"
                             >
                                 <Check className="w-5 h-5" />
                                 完成调整

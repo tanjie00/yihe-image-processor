@@ -237,10 +237,10 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
     Math.round(((endPct - startPct) / 100) * naturalSize.height);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-gray-900 rounded-2xl w-full max-w-5xl flex flex-col max-h-[90vh] shadow-2xl border border-gray-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl p-4">
+      <div className="bg-gray-900/95 rounded-2xl w-full max-w-5xl flex flex-col max-h-[90vh] shadow-2xl shadow-black/50 border border-white/[0.08]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-bold text-white">自定义节点裁剪</h3>
             <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
@@ -257,7 +257,7 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
           {/* Image with nodes */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-auto bg-gray-950/50 relative"
+            className="flex-1 overflow-auto bg-gray-950/80 relative"
           >
             <div className="min-w-full min-h-full flex items-start justify-center p-2">
               <div
@@ -357,7 +357,7 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
             </div>
 
             {/* Zoom controls */}
-            <div className="sticky bottom-4 right-4 float-right mr-4 mb-4 flex flex-col items-center gap-1 bg-gray-800/90 backdrop-blur rounded-lg p-1 border border-gray-700/50 shadow-lg">
+            <div className="sticky bottom-4 right-4 float-right mr-4 mb-4 flex flex-col items-center gap-1 bg-gray-800/90 backdrop-blur-xl rounded-xl p-1.5 border border-white/[0.08] shadow-lg">
               <button onClick={zoomIn} disabled={scale >= MAX_SCALE} className="p-1.5 text-gray-300 hover:text-white disabled:text-gray-600 transition-colors rounded" title="放大">
                 <ZoomIn className="w-4 h-4" />
               </button>
@@ -373,7 +373,7 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-800 bg-gray-900 rounded-b-2xl flex items-center justify-between">
+        <div className="p-4 border-t border-white/[0.06] bg-gray-900/95 rounded-b-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">
               {nodes.length > 0
@@ -392,7 +392,7 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-5 py-2 rounded-xl font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+              className="px-5 py-2 rounded-xl font-medium text-gray-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.06] transition-colors"
               disabled={isCropping}
             >
               取消
@@ -400,7 +400,7 @@ export function CustomSliceModal({ imageUrl, onClose, onCrop, initialNodes }: Cu
             <button
               onClick={handleCrop}
               disabled={isCropping}
-              className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium flex items-center gap-2 transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium flex items-center gap-2 transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/25"
             >
               {isCropping ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -1298,9 +1298,9 @@ export default function Home() {
   // ── Render API Key Selection Screen if no key ──
   if (activeTab === 'image' && !hasApiKey) {
     return (
-        <div className="h-screen w-full flex items-center justify-center bg-gray-950 text-white p-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
-                <div className="w-16 h-16 bg-indigo-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+        <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-gray-950 via-gray-950 to-indigo-950/30 text-white p-4">
+            <div className="bg-gray-900/80 border border-white/[0.08] rounded-2xl p-8 max-w-md w-full shadow-2xl shadow-indigo-500/5 backdrop-blur-xl text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-indigo-900/40 to-purple-900/40 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-indigo-500/20">
                     <Key className="w-8 h-8 text-indigo-400" />
                 </div>
                 <h2 className="text-2xl font-bold mb-3">需要 API 访问权限</h2>
@@ -1311,7 +1311,7 @@ export default function Home() {
                 
                 <button 
                     onClick={handleSelectKey}
-                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
+                    className="w-full py-3 px-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl font-medium transition-all hover:scale-[1.02] shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2"
                 >
                     <Key className="w-4 h-4" />
                     选择 API 密钥
@@ -1326,13 +1326,13 @@ export default function Home() {
     return (
       <div className="h-screen flex flex-col bg-gray-950 text-gray-100">
         {/* Tab bar */}
-        <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 px-6 flex items-center h-12 gap-1">
+        <div className="flex-shrink-0 bg-gradient-to-r from-gray-900 via-gray-900/95 to-gray-900 border-b border-white/[0.06] px-6 flex items-center h-12 gap-1 backdrop-blur-xl">
           <button
             onClick={() => setActiveTab('image')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+            className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
               activeTab === 'image'
-                ? 'bg-indigo-600/20 text-indigo-300'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                ? 'bg-indigo-600/15 text-indigo-300 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:bg-gradient-to-r after:from-indigo-500 after:to-purple-500 after:rounded-full'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
             }`}
           >
             <span className="flex items-center gap-2">
@@ -1342,10 +1342,10 @@ export default function Home() {
           </button>
           <button
             onClick={() => setActiveTab('video')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+            className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
               activeTab === 'video'
-                ? 'bg-indigo-600/20 text-indigo-300'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                ? 'bg-indigo-600/15 text-indigo-300 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:bg-gradient-to-r after:from-indigo-500 after:to-purple-500 after:rounded-full'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
             }`}
           >
             <span className="flex items-center gap-2">
@@ -1366,13 +1366,13 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-gray-100">
       {/* Tab bar */}
-      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 px-6 flex items-center h-12 gap-1">
+      <div className="flex-shrink-0 bg-gradient-to-r from-gray-900 via-gray-900/95 to-gray-900 border-b border-white/[0.06] px-6 flex items-center h-12 gap-1 backdrop-blur-xl">
         <button
           onClick={() => setActiveTab('image')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+          className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
             activeTab === 'image'
-              ? 'bg-indigo-600/20 text-indigo-300'
-              : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              ? 'bg-indigo-600/15 text-indigo-300 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:bg-gradient-to-r after:from-indigo-500 after:to-purple-500 after:rounded-full'
+              : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
           }`}
         >
           <span className="flex items-center gap-2">
@@ -1382,10 +1382,10 @@ export default function Home() {
         </button>
         <button
           onClick={() => setActiveTab('video')}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+          className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
             activeTab === 'video'
-              ? 'bg-indigo-600/20 text-indigo-300'
-              : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              ? 'bg-indigo-600/15 text-indigo-300 after:absolute after:bottom-0 after:left-2 after:right-2 after:h-[2px] after:bg-gradient-to-r after:from-indigo-500 after:to-purple-500 after:rounded-full'
+              : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
           }`}
         >
           <span className="flex items-center gap-2">
@@ -1398,10 +1398,10 @@ export default function Home() {
       {/* Original sidebar + main layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar Controls */}
-        <aside className="w-80 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
+        <aside className="w-80 flex-shrink-0 bg-gradient-to-b from-gray-900 to-gray-950 border-r border-white/[0.06] flex flex-col">
           {/* Fixed Header */}
           <div className="flex-shrink-0 p-4 pb-2">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent flex items-center gap-2">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent flex items-center gap-2" style={{textShadow: '0 0 40px rgba(99,102,241,0.15)'}}>
               <Layers className="w-6 h-6 text-indigo-400" />
               CleanSlate AI
             </h1>
@@ -1412,10 +1412,10 @@ export default function Home() {
           <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
 
           {/* Model Selector - Collapsible */}
-          <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
             <button
               onClick={() => toggleSection('model')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+              className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
             >
               <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                 <Zap className="w-4 h-4 text-indigo-400" />
@@ -1427,10 +1427,10 @@ export default function Home() {
               <div className="px-3 pb-3 grid grid-cols-1 gap-2">
                 <button
                   onClick={() => setAiModel('gemini-2.5-flash-image')}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
                     aiModel === 'gemini-2.5-flash-image'
-                    ? 'bg-indigo-900/40 border-indigo-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                    ? 'bg-indigo-900/40 border-indigo-500/50 text-white shadow-[0_0_15px_-5px_rgba(99,102,241,0.3)]'
+                    : 'bg-gray-800/50 border-white/[0.06] text-gray-400 hover:bg-gray-800 hover:border-white/[0.1]'
                   }`}
                 >
                   <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">
@@ -1447,10 +1447,10 @@ export default function Home() {
 
                 <button
                   onClick={() => setAiModel('gemini-3-pro-image-preview')}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
                     aiModel === 'gemini-3-pro-image-preview'
-                    ? 'bg-purple-900/40 border-purple-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                    ? 'bg-purple-900/40 border-purple-500/50 text-white shadow-[0_0_15px_-5px_rgba(168,85,247,0.3)]'
+                    : 'bg-gray-800/50 border-white/[0.06] text-gray-400 hover:bg-gray-800 hover:border-white/[0.1]'
                   }`}
                 >
                   <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400">
@@ -1466,10 +1466,10 @@ export default function Home() {
           </div>
 
           {/* API Key Settings - Collapsible */}
-          <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
             <button
               onClick={() => toggleSection('api')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+              className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
             >
               <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                 <Key className="w-4 h-4 text-indigo-400" />
@@ -1480,7 +1480,7 @@ export default function Home() {
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('api') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 space-y-3">
                 {apiKeySaved ? (
-                  <div className="flex items-center justify-between bg-gray-800/60 rounded-lg p-2.5 border border-gray-700/50">
+                  <div className="flex items-center justify-between bg-gray-800/40 rounded-lg p-2.5 border border-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-green-500"></div>
                       <span className="text-sm text-gray-300">API Key 已配置</span>
@@ -1499,12 +1499,12 @@ export default function Home() {
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
                       placeholder="输入 Gemini API Key"
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-indigo-500 transition-colors"
+                      className="w-full bg-gray-900/80 border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-indigo-500/50 focus:shadow-[0_0_10px_-3px_rgba(99,102,241,0.2)] transition-all"
                     />
                     <button
                       onClick={handleSaveApiKey}
                       disabled={!apiKeyInput.trim()}
-                      className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                      className="w-full py-2 px-3 bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-500 hover:to-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
                     >
                       <Key className="w-3.5 h-3.5" />
                       保存 API Key
@@ -1514,7 +1514,7 @@ export default function Home() {
                 {(window as any).aistudio && (
                   <button
                     onClick={handleSelectKey}
-                    className="w-full py-2 px-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-2 px-3 bg-white/[0.05] hover:bg-white/[0.08] text-gray-300 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-white/[0.06]"
                   >
                     <Key className="w-3.5 h-3.5" />
                     从 AI Studio 选择
@@ -1525,10 +1525,10 @@ export default function Home() {
           </div>
 
           {/* Mode Selector - Collapsible */}
-          <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
             <button
               onClick={() => toggleSection('mode')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+              className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
             >
               <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                 <Wand2 className="w-4 h-4 text-indigo-400" />
@@ -1540,10 +1540,10 @@ export default function Home() {
               <div className="px-3 pb-3 grid grid-cols-1 gap-2">
                 <button
                   onClick={() => setMode('add-logo')}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
                     mode === 'add-logo'
-                      ? 'bg-indigo-900/40 border-indigo-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                      ? 'bg-indigo-900/40 border-indigo-500/50 text-white shadow-[0_0_15px_-5px_rgba(99,102,241,0.3)]'
+                      : 'bg-gray-800/50 border-white/[0.06] text-gray-400 hover:bg-gray-800 hover:border-white/[0.1]'
                   }`}
                 >
                   <Stamp className="w-5 h-5" />
@@ -1555,10 +1555,10 @@ export default function Home() {
 
                 <button
                   onClick={() => setMode('both')}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
                     mode === 'both'
-                      ? 'bg-indigo-900/40 border-indigo-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                      ? 'bg-indigo-900/40 border-indigo-500/50 text-white shadow-[0_0_15px_-5px_rgba(99,102,241,0.3)]'
+                      : 'bg-gray-800/50 border-white/[0.06] text-gray-400 hover:bg-gray-800 hover:border-white/[0.1]'
                   }`}
                 >
                   <Layers className="w-5 h-5" />
@@ -1570,10 +1570,10 @@ export default function Home() {
 
                 <button
                   onClick={() => setMode('crop-only')}
-                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                  className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
                     mode === 'crop-only'
-                      ? 'bg-indigo-900/40 border-indigo-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                      ? 'bg-indigo-900/40 border-indigo-500/50 text-white shadow-[0_0_15px_-5px_rgba(99,102,241,0.3)]'
+                      : 'bg-gray-800/50 border-white/[0.06] text-gray-400 hover:bg-gray-800 hover:border-white/[0.1]'
                   }`}
                 >
                   <CropIcon className="w-5 h-5" />
@@ -1587,10 +1587,10 @@ export default function Home() {
           </div>
 
           {/* Global Crop Settings - Collapsible */}
-          <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
             <button
               onClick={() => toggleSection('crop')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+              className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
             >
               <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                 <CropIcon className="w-4 h-4 text-indigo-400" />
@@ -1599,7 +1599,7 @@ export default function Home() {
               <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('crop') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('crop') ? 'max-h-0' : 'max-h-[500px]'}`}>
-              <div className="px-3 pb-3 bg-gray-800/30 space-y-3">
+              <div className="px-3 pb-3 bg-white/[0.02] space-y-3">
                 <label className="flex items-center gap-2 cursor-pointer group">
                   <input
                     type="checkbox"
@@ -1610,29 +1610,29 @@ export default function Home() {
                   <span className="text-sm text-gray-300 group-hover:text-white transition-colors">自动对所有图片应用裁剪规则</span>
                 </label>
 
-                <div className="flex bg-gray-900 rounded-lg p-1 gap-1 border border-gray-800">
+                <div className="flex bg-gray-900/80 rounded-lg p-1 gap-1 border border-white/[0.06]">
                   <button
                     onClick={() => setBatchCropAspect(1)}
-                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${batchCropAspect === 1 ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-200 ${batchCropAspect === 1 ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
                   >
                     1:1 比例
                   </button>
                   <button
                     onClick={() => setBatchCropAspect(3/4)}
-                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${batchCropAspect === 3/4 ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-200 ${batchCropAspect === 3/4 ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
                   >
                     3:4 比例
                   </button>
                   <button
                     onClick={() => setBatchCropAspect(null)}
-                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors ${batchCropAspect === null ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+                    className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-all duration-200 ${batchCropAspect === null ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-sm' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'}`}
                   >
                     自定义尺寸
                   </button>
                 </div>
                 {batchCropAspect === null && (
                   <div className="flex items-center gap-2 pt-1 transition-all">
-                    <div className="flex-1 flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-indigo-500 transition-colors">
+                    <div className="flex-1 flex items-center bg-gray-900/80 rounded-lg px-2 border border-white/[0.06] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_10px_-3px_rgba(99,102,241,0.2)] transition-all">
                       <span className="text-xs text-gray-500 px-1 font-medium">W</span>
                       <input
                         type="number"
@@ -1642,7 +1642,7 @@ export default function Home() {
                       />
                     </div>
                     <span className="text-gray-600 text-xs font-medium px-1">x</span>
-                    <div className="flex-1 flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-indigo-500 transition-colors">
+                    <div className="flex-1 flex items-center bg-gray-900/80 rounded-lg px-2 border border-white/[0.06] focus-within:border-indigo-500/50 focus-within:shadow-[0_0_10px_-3px_rgba(99,102,241,0.2)] transition-all">
                       <span className="text-xs text-gray-500 px-1 font-medium">H</span>
                       <input
                         type="number"
@@ -1659,10 +1659,10 @@ export default function Home() {
 
           {/* Logo Controls - Collapsible (Only if logo mode) */}
           {(mode === 'add-logo' || mode === 'both') && (
-            <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+            <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
               <button
                 onClick={() => toggleSection('logo')}
-                className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+                className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
               >
                 <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                   <Stamp className="w-4 h-4 text-indigo-400" />
@@ -1687,10 +1687,10 @@ export default function Home() {
           )}
 
           {/* Detail Page Crop - Collapsible */}
-          <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
             <button
               onClick={() => toggleSection('detailCrop')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+              className="w-full flex items-center justify-between p-3 hover:bg-white/[0.03] transition-colors"
             >
               <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                 <Maximize className="w-4 h-4 text-indigo-400" />
@@ -1699,7 +1699,7 @@ export default function Home() {
               <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('detailCrop') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('detailCrop') ? 'max-h-0' : 'max-h-[500px]'}`}>
-              <div className="px-3 pb-3 bg-gray-800/30 space-y-3">
+              <div className="px-3 pb-3 bg-white/[0.02] space-y-3">
                 {/* Radio Group */}
                 <div className="space-y-2">
                   {([
@@ -1714,7 +1714,7 @@ export default function Home() {
                       className={`flex items-center gap-3 p-2.5 rounded-lg cursor-pointer transition-all border ${
                         detailCropRatio === option.value
                           ? 'bg-indigo-900/30 border-indigo-500/50'
-                          : 'border-transparent hover:bg-gray-800/50'
+                          : 'border-white/[0.04] hover:bg-white/[0.03]'
                       }`}
                     >
                       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
@@ -1818,14 +1818,14 @@ export default function Home() {
           </div>
 
           {/* Fixed Action Button */}
-          <div className="flex-shrink-0 p-4 pt-2 border-t border-gray-800">
+          <div className="flex-shrink-0 p-4 pt-2 border-t border-white/[0.06]">
             <button
               onClick={processBatch}
               disabled={isProcessing || images.length === 0 || ((mode === 'add-logo' || mode === 'both') && logoItems.length === 0) || (mode === 'crop-only' && !enableBatchCrop)}
-              className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all ${
+              className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all duration-300 ${
                 isProcessing || images.length === 0 || ((mode === 'add-logo' || mode === 'both') && logoItems.length === 0) || (mode === 'crop-only' && !enableBatchCrop)
-                  ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white transform hover:scale-[1.02]'
+                  ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-white/[0.04]'
+                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white transform hover:scale-[1.02] shadow-[0_0_30px_-8px_rgba(99,102,241,0.4)] hover:shadow-[0_0_40px_-8px_rgba(99,102,241,0.5)]'
               }`}
             >
               {isProcessing ? (
@@ -1860,7 +1860,7 @@ export default function Home() {
           )}
 
           {/* Header / Stats */}
-          <header className={`border-b border-gray-800 flex items-center justify-between px-6 bg-gray-900/50 backdrop-blur z-20 transition-all ${globalProgress ? 'h-24 flex-col py-2' : 'h-16'}`}>
+          <header className={`border-b border-white/[0.06] flex items-center justify-between px-6 bg-gradient-to-r from-gray-900/80 via-gray-900/60 to-transparent backdrop-blur-xl z-20 transition-all ${globalProgress ? 'h-24 flex-col py-2' : 'h-16'}`}>
             <div className="flex items-center gap-4 w-full">
                <span className="text-gray-400 text-sm">
                   已加载 {images.length} 张图片
@@ -1886,15 +1886,17 @@ export default function Home() {
               return (
                 <div className="w-full flex items-center gap-3">
                   <div className="flex-1">
-                    <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                    <div className="w-full bg-gray-700/50 rounded-full h-3 overflow-hidden backdrop-blur-sm">
                       <div
-                        className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-300 ease-out rounded-full"
+                        className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 h-full transition-all duration-300 ease-out rounded-full relative overflow-hidden"
                         style={{ width: `${percent}%` }}
-                      />
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite]" />
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs whitespace-nowrap">
-                    <span className="text-indigo-300 font-bold">{current}/{total}</span>
+                    <span className="text-indigo-300 font-bold tabular-nums">{current}/{total}</span>
                     <span className="text-gray-500">({percent}%)</span>
                     {getEtaString(globalProgress) && (
                       <span className="text-yellow-400">剩余 {getEtaString(globalProgress)}</span>
@@ -1912,7 +1914,7 @@ export default function Home() {
                   <>
                     <button
                       onClick={toggleSelectAll}
-                      className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                      className="px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-2 border border-white/[0.04]"
                     >
                       {allSelected ? <CheckSquare className="w-4 h-4 text-indigo-400" /> : <Square className="w-4 h-4" />}
                       {allSelected ? '取消全选' : '全选'}
@@ -1920,7 +1922,7 @@ export default function Home() {
                     <button
                       onClick={handleDownloadSelected}
                       disabled={isZipping}
-                      className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 disabled:text-gray-400 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/20"
+                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-500 hover:to-indigo-500 disabled:from-indigo-800 disabled:to-indigo-800 disabled:text-gray-400 text-white rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/30"
                     >
                       {isZipping ? (
                           <>
@@ -1939,16 +1941,16 @@ export default function Home() {
                
                <button 
                   onClick={clearAll}
-                  className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition-colors flex items-center gap-2"
+                  className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 hover:border-red-500/20 rounded-lg transition-all flex items-center gap-2 border border-transparent"
                   disabled={isProcessing}
                >
                   <Trash2 className="w-4 h-4"/> 清空所有
                </button>
-               <label className="cursor-pointer px-4 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2">
+               <label className="cursor-pointer px-4 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-2 border border-white/[0.04]">
                   <Upload className="w-4 h-4"/> 添加图片
                   <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
                </label>
-               <label className="cursor-pointer px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-2">
+               <label className="cursor-pointer px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-2 border border-white/[0.04]">
                   <FolderOpen className="w-4 h-4"/> 选择文件夹
                   <input type="file" onChange={handleFolderUpload} className="hidden" {...({ webkitdirectory: 'true', directory: 'true' } as Record<string, string>)} />
                </label>
@@ -1958,20 +1960,20 @@ export default function Home() {
           {/* Image Grid */}
           <div className="flex-1 overflow-y-auto p-6 z-10">
             {images.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 m-4">
-                <div className="p-8 bg-gray-900 rounded-full mb-6">
-                  <ImageIcon className="w-12 h-12 text-indigo-500" />
+              <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-white/[0.08] rounded-3xl bg-gradient-to-br from-gray-900/40 via-gray-900/20 to-indigo-900/10 m-4 backdrop-blur-sm">
+                <div className="p-8 bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-full mb-6 ring-1 ring-indigo-500/20 animate-pulse">
+                  <ImageIcon className="w-12 h-12 text-indigo-400" />
                 </div>
-                <h2 className="text-2xl font-semibold text-gray-300 mb-2">拖放图片或文件夹到这里</h2>
+                <h2 className="text-2xl font-semibold text-gray-200 mb-2">拖放图片或文件夹到这里</h2>
                 <p className="max-w-md text-center text-gray-500">
                   上传多张图片或整个文件夹以批量去除文字或添加您的品牌水印。支持递归扫描子文件夹。
                 </p>
                 <div className="mt-8 flex gap-4">
-                  <label className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl cursor-pointer font-medium transition-transform hover:scale-105">
+                  <label className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl cursor-pointer font-medium transition-all hover:scale-105 shadow-lg shadow-indigo-500/20">
                     选择文件
                     <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </label>
-                  <label className="px-8 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl cursor-pointer font-medium transition-transform hover:scale-105 flex items-center gap-2">
+                  <label className="px-8 py-3 bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-xl cursor-pointer font-medium transition-all hover:scale-105 flex items-center gap-2 border border-white/[0.08]">
                     <FolderOpen className="w-5 h-5" /> 选择文件夹
                     <input type="file" onChange={handleFolderUpload} className="hidden" {...({ webkitdirectory: 'true', directory: 'true' } as Record<string, string>)} />
                   </label>
@@ -1984,10 +1986,10 @@ export default function Home() {
                   <div className="flex items-center gap-1 mb-4 flex-wrap">
                     <button
                       onClick={() => navigateToFolder(null)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-all ${
                         currentFolderPath === null
                           ? 'bg-indigo-600/20 text-indigo-300 font-medium'
-                          : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                          : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
                       }`}
                     >
                       <FolderOpen className="w-4 h-4" />
@@ -2002,10 +2004,10 @@ export default function Home() {
                               navigateToFolder(seg.fullPath);
                             }
                           }}
-                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-all ${
                             idx === breadcrumbSegments.length - 1
                               ? 'bg-indigo-600/20 text-indigo-300 font-medium cursor-default'
-                              : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                              : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
                           }`}
                         >
                           <Folder className="w-3.5 h-3.5" />
@@ -2028,29 +2030,29 @@ export default function Home() {
                       return (
                         <div
                           key={folder.fullPath}
-                          className="group flex flex-col bg-gray-800/80 border border-gray-700/60 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:bg-gray-800 transition-all"
+                          className="group flex flex-col bg-gray-800/60 border border-white/[0.06] rounded-xl overflow-hidden hover:border-indigo-500/40 hover:bg-gray-800/80 transition-all duration-200 hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.15)]"
                         >
                           {/* Folder Preview — clickable area */}
                           <button
                             onClick={() => navigateToFolder(folder.fullPath)}
-                            className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden relative w-full cursor-pointer"
+                            className="aspect-square bg-gray-900/80 flex items-center justify-center overflow-hidden relative w-full cursor-pointer"
                           >
                             {folder.previewUrl ? (
                               <img
                                 src={folder.previewUrl}
-                                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+                                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-all duration-300"
                                 alt={folder.name}
                               />
                             ) : (
                               <Folder className="w-12 h-12 text-gray-600" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/20 to-transparent" />
                             {/* Download button overlay */}
                             {completedInFolder > 0 && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); downloadFolderImages(folder.fullPath, folder.name); }}
                                 disabled={isZipping}
-                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
+                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100 backdrop-blur-sm"
                                 title={`下载 ${completedInFolder} 张已处理图片`}
                               >
                                 <Download className="w-4 h-4" />
@@ -2083,14 +2085,14 @@ export default function Home() {
                 {currentFolderImages.map((img) => (
                   <div
                     key={img.id}
-                    className="group relative bg-gray-800 rounded-xl overflow-hidden shadow-xl border border-gray-700 hover:border-indigo-500/50 transition-all"
+                    className="group relative bg-gray-800/80 rounded-xl overflow-hidden shadow-xl border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 hover:shadow-[0_8px_30px_-8px_rgba(99,102,241,0.2)]"
                   >
                     {/* Image Preview */}
-                    <div className="aspect-video relative bg-gray-900 flex items-center justify-center overflow-hidden">
+                    <div className="aspect-video relative bg-gray-900/80 flex items-center justify-center overflow-hidden">
                       {img.status === ProcessStatus.COMPLETED && img.resultUrl ? (
                            <>
                               <img src={img.resultUrl} className="w-full h-full object-contain" alt="Processed" />
-                              <div className="absolute top-2 left-2 bg-green-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
+                              <div className="absolute top-2 left-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm backdrop-blur-sm">
                                   已处理
                               </div>
                               {/* Selection checkbox */}
@@ -2098,8 +2100,8 @@ export default function Home() {
                                 onClick={(e) => { e.stopPropagation(); toggleSelect(img.id); }}
                                 className={`absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center transition-all z-20 ${
                                   selectedIds.has(img.id)
-                                    ? 'bg-indigo-600 text-white shadow-lg'
-                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-black/60'
+                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                                    : 'bg-black/40 text-gray-400 hover:text-white hover:bg-black/60 backdrop-blur-sm'
                                 }`}
                               >
                                 {selectedIds.has(img.id) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
@@ -2111,11 +2113,11 @@ export default function Home() {
 
                       {/* Status Overlays */}
                       {img.status === ProcessStatus.PROCESSING && (
-                          <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                          <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
                               <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                              <div className="w-48 bg-gray-700 rounded-full h-2 mb-2 overflow-hidden">
+                              <div className="w-48 bg-white/[0.06] rounded-full h-2 mb-2 overflow-hidden backdrop-blur-sm">
                                   <div 
-                                     className="bg-indigo-500 h-full transition-all duration-300 ease-out"
+                                     className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-300 ease-out rounded-full"
                                      style={{ width: `${img.progressValue || 0}%` }}
                                   ></div>
                               </div>
@@ -2132,7 +2134,7 @@ export default function Home() {
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="p-3 bg-gray-800 flex items-center justify-between border-t border-gray-700">
+                    <div className="p-3 bg-gray-800/60 flex items-center justify-between border-t border-white/[0.06]">
                       <div className="truncate text-xs text-gray-400 max-w-[200px]" title={img.relativePath ? `${img.relativePath}/${img.originalFile.name}` : img.originalFile.name}>
                           {img.relativePath && <span className="text-gray-600">{img.relativePath}/</span>}
                           {img.originalFile.name}
@@ -2140,7 +2142,7 @@ export default function Home() {
                       <div className="flex gap-2">
                            <button 
                               onClick={() => setCroppingImageId(img.id)}
-                              className="p-2 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors"
+                              className="p-2 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-all duration-200"
                               title="裁剪"
                               disabled={img.status === ProcessStatus.PROCESSING}
                            >
@@ -2149,7 +2151,7 @@ export default function Home() {
                            {img.status === ProcessStatus.COMPLETED ? (
                                <button 
                                   onClick={() => downloadImage(img)}
-                                  className="p-2 hover:bg-green-500/20 text-green-400 rounded-lg transition-colors"
+                                  className="p-2 hover:bg-green-500/20 text-green-400 rounded-lg transition-all duration-200"
                                   title="下载"
                                >
                                   <Download className="w-4 h-4" />
@@ -2157,7 +2159,7 @@ export default function Home() {
                            ) : (
                                <button 
                                   onClick={() => handleDelete(img.id)}
-                                  className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                                  className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-all duration-200"
                                   title="移除"
                                   disabled={img.status === ProcessStatus.PROCESSING}
                                >
@@ -2174,8 +2176,8 @@ export default function Home() {
                 {/* Empty folder message */}
                 {currentFolderImages.length === 0 && currentFolderNode && currentFolderNode.children.length === 0 && currentFolderPath && (
                   <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-                    <Folder className="w-12 h-12 text-gray-600 mb-3" />
-                    <p className="text-sm">此文件夹为空</p>
+                    <Folder className="w-12 h-12 text-gray-600 mb-3 opacity-60" />
+                    <p className="text-sm text-gray-400">此文件夹为空</p>
                     <button
                       onClick={() => navigateToFolder(null)}
                       className="mt-3 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
@@ -2187,7 +2189,7 @@ export default function Home() {
               </>
             )}
             {batchResults.length > 0 && (
-              <div className="mt-8">
+              <div className="mt-8 pt-8 border-t border-white/[0.06]">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2 text-sm text-gray-400">
                     <Stamp className="w-4 h-4 text-indigo-400" />
@@ -2200,7 +2202,7 @@ export default function Home() {
                     <button
                       onClick={handleDownloadAllBatchResults}
                       disabled={isZipping}
-                      className="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-indigo-900/20"
+                      className="px-3 py-1.5 text-sm bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-500 hover:to-indigo-500 disabled:from-indigo-800 disabled:to-indigo-800 text-white rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/30"
                     >
                       {isZipping ? (
                         <>
@@ -2226,23 +2228,23 @@ export default function Home() {
                       return (
                         <div
                           key={logoId}
-                          className="group flex flex-col bg-gray-800/80 border border-gray-700/60 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:bg-gray-800 transition-all"
+                          className="group flex flex-col bg-gray-800/60 border border-white/[0.06] rounded-xl overflow-hidden hover:border-indigo-500/40 hover:bg-gray-800/80 transition-all duration-200 hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.15)]"
                         >
                           <div
                             onClick={() => setBatchSelectedLogoId(logoId)}
-                            className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden relative cursor-pointer"
+                            className="aspect-square bg-gray-900/80 flex items-center justify-center overflow-hidden relative cursor-pointer"
                           >
                             {logo ? (
-                              <img src={logo.url} className="w-full h-full object-contain p-4 opacity-70 group-hover:opacity-90 transition-opacity" alt={logoName} />
+                              <img src={logo.url} className="w-full h-full object-contain p-4 opacity-70 group-hover:opacity-90 transition-all duration-300" alt={logoName} />
                             ) : (
                               <Stamp className="w-12 h-12 text-gray-600" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/20 to-transparent" />
                             {completedCount > 0 && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); downloadBatchFolderResults(logoId, null); }}
                                 disabled={isZipping}
-                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
+                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100 backdrop-blur-sm"
                                 title={`下载 ${completedCount} 张已合成图片`}
                               >
                                 <Download className="w-4 h-4" />
@@ -2267,7 +2269,7 @@ export default function Home() {
                     <div className="flex items-center gap-1 mb-4 flex-wrap">
                       <button
                         onClick={() => { setBatchSelectedLogoId(null); setBatchSelectedFolderPath(null); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
                       >
                         <Stamp className="w-4 h-4" />
                         全部 Logo
@@ -2278,7 +2280,7 @@ export default function Home() {
                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors ${
                           !batchSelectedFolderPath
                             ? 'bg-indigo-600/20 text-indigo-300 font-medium cursor-default'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                            : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
                         }`}
                       >
                         <FolderOpen className="w-4 h-4" />
@@ -2290,7 +2292,7 @@ export default function Home() {
                           {idx < batchFolderSegments.length - 1 ? (
                             <button
                               onClick={() => setBatchSelectedFolderPath(seg.fullPath)}
-                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-all"
                             >
                               <Folder className="w-3.5 h-3.5" />
                               {seg.name}
@@ -2321,19 +2323,19 @@ export default function Home() {
                             return (
                               <div
                                 key={folder.fullPath}
-                                className="group flex flex-col bg-gray-800/80 border border-gray-700/60 rounded-xl overflow-hidden hover:border-indigo-500/50 hover:bg-gray-800 transition-all"
+                                className="group flex flex-col bg-gray-800/60 border border-white/[0.06] rounded-xl overflow-hidden hover:border-indigo-500/40 hover:bg-gray-800/80 transition-all duration-200 hover:shadow-[0_0_20px_-5px_rgba(99,102,241,0.15)]"
                               >
                                 <div
                                   onClick={() => setBatchSelectedFolderPath(folder.fullPath)}
-                                  className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden relative cursor-pointer"
+                                  className="aspect-square bg-gray-900/80 flex items-center justify-center overflow-hidden relative cursor-pointer"
                                 >
                                   <Folder className="w-12 h-12 text-gray-600" />
-                                  <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/20 to-transparent" />
                                   {completedInFolder > 0 && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); downloadBatchFolderResults(batchSelectedLogoId!, folder.fullPath); }}
                                       disabled={isZipping}
-                                      className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
+                                      className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-indigo-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100 backdrop-blur-sm"
                                       title={`下载 ${completedInFolder} 张已合成图片`}
                                     >
                                       <Download className="w-4 h-4" />
@@ -2363,13 +2365,13 @@ export default function Home() {
                         {currentBatchResults.map((result) => (
                           <div
                             key={result.id}
-                            className="group relative bg-gray-800 rounded-xl overflow-hidden shadow-xl border border-gray-700 hover:border-indigo-500/50 transition-all"
+                            className="group relative bg-gray-800/80 rounded-xl overflow-hidden shadow-xl border border-white/[0.06] hover:border-indigo-500/40 transition-all duration-200 hover:shadow-[0_8px_30px_-8px_rgba(99,102,241,0.2)]"
                           >
-                            <div className="aspect-video relative bg-gray-900 flex items-center justify-center overflow-hidden">
+                            <div className="aspect-video relative bg-gray-900/80 flex items-center justify-center overflow-hidden">
                               {result.status === ProcessStatus.COMPLETED && result.resultUrl ? (
                                 <>
                                   <img src={result.resultUrl} className="w-full h-full object-contain" alt="Result" />
-                                  <div className="absolute top-2 left-2 bg-green-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">
+                                  <div className="absolute top-2 left-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm backdrop-blur-sm">
                                     已完成
                                   </div>
                                 </>
@@ -2387,14 +2389,14 @@ export default function Home() {
                                 <div className="text-gray-600 text-sm">等待处理</div>
                               )}
                             </div>
-                            <div className="p-3 bg-gray-800 flex items-center justify-between border-t border-gray-700">
+                            <div className="p-3 bg-gray-800/60 flex items-center justify-between border-t border-white/[0.06]">
                               <div className="truncate text-xs text-gray-400 max-w-[200px]">
                                 {(result.imageName.substring(0, result.imageName.lastIndexOf('.')) || result.imageName)}.png
                               </div>
                               {result.status === ProcessStatus.COMPLETED && (
                                 <button
                                   onClick={() => downloadBatchResult(result)}
-                                  className="p-2 hover:bg-green-500/20 text-green-400 rounded-lg transition-colors"
+                                  className="p-2 hover:bg-green-500/20 text-green-400 rounded-lg transition-all duration-200"
                                   title="下载"
                                 >
                                   <Download className="w-4 h-4" />
@@ -2412,8 +2414,8 @@ export default function Home() {
                       return (!targetNode || (targetNode.children.length === 0 && targetNode.directImageCount === 0));
                     })() && (
                       <div className="flex flex-col items-center justify-center py-16 text-gray-500">
-                        <Folder className="w-12 h-12 text-gray-600 mb-3" />
-                        <p className="text-sm">此文件夹为空</p>
+                        <Folder className="w-12 h-12 text-gray-600 mb-3 opacity-60" />
+                        <p className="text-sm text-gray-400">此文件夹为空</p>
                       </div>
                     )}
                   </>
@@ -2423,7 +2425,7 @@ export default function Home() {
 
             {/* Detail Slice Results */}
             {slicedResults.length > 0 && (
-              <div className="mt-8 space-y-6">
+              <div className="mt-8 pt-8 space-y-6 border-t border-white/[0.06]">
                 <div className="flex items-center gap-2 text-sm text-gray-400">
                   <Maximize className="w-4 h-4 text-indigo-400" />
                   <span className="font-medium">详情页切片结果</span>
