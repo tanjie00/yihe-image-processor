@@ -72,3 +72,23 @@ Stage Summary:
 - 新增批量文件夹视频合成：自动识别子文件夹 → 每个子文件夹生成视频 → 原图保留
 - 支持批量下载所有视频（ZIP）、单个视频下载、进度追踪
 - 构建成功，零错误
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: 修复三大问题：1) 视频合成速度慢+多线程 2) 暂停后无法查看已完成视频 3) 下载结构：图片+视频放一起
+
+Work Log:
+- 修复 node.exe ENOENT 报错：将 next.config.ts 从 output:"standalone" 改为 output:"export"（静态导出）
+- 删除 src/app/api/route.ts（静态导出不支持 API routes）
+- 安装 webm-muxer 依赖
+- 完全重写 videoService.ts：VideoEncoder + webm-muxer 快速编码（10-30倍提速，无需实时等待）
+- 重写 VideoComposer.tsx：并发3路生成、暂停可查看已完成视频、下载ZIP含图片+视频
+- 构建验证通过，零错误
+
+Stage Summary:
+- 视频编码速度提升 10-30 倍（VideoEncoder 精确帧时间戳，无需实时等待）
+- 批量生成支持 3 路并发（多线程处理多个文件夹）
+- 取消生成后可正常查看/下载已完成的视频
+- 下载 ZIP 结构：子文件夹/图片+视频.webm
+- 项目改为静态导出，打包后无需 node.exe

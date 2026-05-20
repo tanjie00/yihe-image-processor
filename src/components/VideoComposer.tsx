@@ -12,6 +12,7 @@ import {
   generateVideo,
   getAspectRatioResolution,
   TRANSITION_LABELS,
+  supportsFastEncoding,
 } from '@/lib/video/videoService';
 import type {
   VideoAspectRatio,
@@ -41,6 +42,8 @@ interface FolderGroup {
   isCompleted: boolean;
   error?: string;
 }
+
+const CONCURRENCY = 3; // Process up to 3 folders simultaneously
 
 const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   aspectRatio: '16:9',
@@ -284,7 +287,7 @@ export function VideoComposer() {
     return folderGroups.find(g => g.path === selectedFolderPath) || null;
   }, [folderGroups, selectedFolderPath]);
 
-  // ==================== Video Generation ====================
+  // ==================== Video Generation (Concurrent Pool) ====================
 
   const handleBatchGenerate = async () => {
     if (folderGroups.length === 0) return;
@@ -293,65 +296,75 @@ export function VideoComposer() {
     const abortController = new AbortController();
     abortRef.current = abortController;
 
-    const totalFolders = folderGroups.filter(g => g.images.length >= 2).length;
+    const eligibleGroups = folderGroups.filter(g => g.images.length >= 2);
+    const totalFolders = eligibleGroups.length;
     let completedCount = 0;
+    let nextIndex = 0;
     const startTime = Date.now();
     setBatchProgress({ current: 0, total: totalFolders, startTime });
 
-    for (const group of folderGroups) {
-      if (abortController.signal.aborted) break;
-      if (group.images.length < 2) continue;
+    const processNext = async (): Promise<void> => {
+      while (nextIndex < eligibleGroups.length) {
+        if (abortController.signal.aborted) return;
+        const currentIndex = nextIndex++;
+        const group = eligibleGroups[currentIndex];
 
-      // Update group state to generating
-      setFolderGroups(prev => prev.map(g =>
-        g.path === group.path ? { ...g, isGenerating: true, progress: undefined, error: undefined } : g
-      ));
+        // Update group state to generating
+        setFolderGroups(prev => prev.map(g =>
+          g.path === group.path ? { ...g, isGenerating: true, progress: undefined, error: undefined } : g
+        ));
 
-      try {
-        // Load images as HTMLImageElements
-        const imageElements: HTMLImageElement[] = [];
-        for (const img of group.images) {
-          const el = new Image();
-          el.crossOrigin = 'anonymous';
-          await new Promise<void>((resolve, reject) => {
-            el.onload = () => resolve();
-            el.onerror = () => reject(new Error(`无法加载图片: ${img.name}`));
-            el.src = img.url;
-          });
-          imageElements.push(el);
-        }
+        try {
+          // Load images as HTMLImageElements
+          const imageElements: HTMLImageElement[] = [];
+          for (const img of group.images) {
+            const el = new Image();
+            el.crossOrigin = 'anonymous';
+            await new Promise<void>((resolve, reject) => {
+              el.onload = () => resolve();
+              el.onerror = () => reject(new Error(`无法加载图片: ${img.name}`));
+              el.src = img.url;
+            });
+            imageElements.push(el);
+          }
 
-        const settings = { ...videoSettings };
-        if (settings.aspectRatio === 'custom') {
-          settings.customWidth = customWidth;
-          settings.customHeight = customHeight;
-        }
+          const settings = { ...videoSettings };
+          if (settings.aspectRatio === 'custom') {
+            settings.customWidth = customWidth;
+            settings.customHeight = customHeight;
+          }
 
-        const onProgress = (progress: VideoProgress) => {
+          const onProgress = (progress: VideoProgress) => {
+            setFolderGroups(prev => prev.map(g =>
+              g.path === group.path ? { ...g, progress } : g
+            ));
+          };
+
+          const blob = await generateVideo(imageElements, settings, onProgress, abortController.signal);
+
+          const url = URL.createObjectURL(blob);
+          completedCount++;
+
           setFolderGroups(prev => prev.map(g =>
-            g.path === group.path ? { ...g, progress } : g
+            g.path === group.path ? { ...g, isGenerating: false, isCompleted: true, videoBlob: blob, videoUrl: url, progress: undefined } : g
           ));
-        };
 
-        const blob = await generateVideo(imageElements, settings, onProgress, abortController.signal);
-
-        const url = URL.createObjectURL(blob);
-        completedCount++;
-
-        setFolderGroups(prev => prev.map(g =>
-          g.path === group.path ? { ...g, isGenerating: false, isCompleted: true, videoBlob: blob, videoUrl: url, progress: undefined } : g
-        ));
-
-        setBatchProgress(prev => prev ? { ...prev, current: completedCount } : null);
-      } catch (err: any) {
-        if (err.name === 'AbortError') break;
-        setFolderGroups(prev => prev.map(g =>
-          g.path === group.path ? { ...g, isGenerating: false, error: err.message || '生成失败', progress: undefined } : g
-        ));
-        completedCount++;
-        setBatchProgress(prev => prev ? { ...prev, current: completedCount } : null);
+          setBatchProgress(prev => prev ? { ...prev, current: completedCount } : null);
+        } catch (err: any) {
+          if (err.name === 'AbortError') return; // Exit this worker on abort
+          setFolderGroups(prev => prev.map(g =>
+            g.path === group.path ? { ...g, isGenerating: false, error: err.message || '生成失败', progress: undefined } : g
+          ));
+          completedCount++;
+          setBatchProgress(prev => prev ? { ...prev, current: completedCount } : null);
+        }
       }
-    }
+    };
+
+    // Start concurrent workers (up to CONCURRENCY, but no more than total folders)
+    const workerCount = Math.min(CONCURRENCY, eligibleGroups.length);
+    const workers = Array.from({ length: workerCount }, () => processNext());
+    await Promise.all(workers);
 
     setIsBatchGenerating(false);
     setBatchProgress(null);
@@ -360,25 +373,58 @@ export function VideoComposer() {
 
   const handleCancel = () => {
     abortRef.current?.abort();
+    // Don't clear batch progress immediately — let the workers finish their current tasks
+    // Just mark batch as no longer generating so the UI updates
     setIsBatchGenerating(false);
     setBatchProgress(null);
+    // Clear isGenerating on any groups still generating (they will be aborted)
+    setFolderGroups(prev => prev.map(g =>
+      g.isGenerating ? { ...g, isGenerating: false, progress: undefined } : g
+    ));
   };
+
+  // ==================== Download ====================
 
   const handleDownloadVideo = (group: FolderGroup) => {
     if (!group.videoBlob || !group.videoUrl) return;
-    const a = document.createElement('a');
-    a.href = group.videoUrl;
-    a.download = `${group.name}_video.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Download single folder as ZIP with images + video
+    handleDownloadFolder(group);
+  };
+
+  const handleDownloadFolder = async (group: FolderGroup) => {
+    if (!group.videoBlob) return;
+
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      // Add original images
+      for (const img of group.images) {
+        zip.file(`${group.name}/${img.name}`, img.file);
+      }
+
+      // Add video
+      zip.file(`${group.name}/${group.name}_video.webm`, group.videoBlob);
+
+      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${group.name}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('ZIP failed', err);
+    }
   };
 
   const handleDownloadAll = async () => {
-    const completedGroups = folderGroups.filter(g => g.isCompleted && g.videoBlob && g.videoUrl);
+    const completedGroups = folderGroups.filter(g => g.isCompleted && g.videoBlob);
     if (completedGroups.length === 0) return;
     if (completedGroups.length === 1) {
-      handleDownloadVideo(completedGroups[0]);
+      handleDownloadFolder(completedGroups[0]);
       return;
     }
 
@@ -388,6 +434,13 @@ export function VideoComposer() {
 
       for (const group of completedGroups) {
         if (!group.videoBlob) continue;
+
+        // Add original images
+        for (const img of group.images) {
+          zip.file(`${group.name}/${img.name}`, img.file);
+        }
+
+        // Add video
         zip.file(`${group.name}/${group.name}_video.webm`, group.videoBlob);
       }
 
@@ -449,6 +502,12 @@ export function VideoComposer() {
             视频合成
           </h1>
           <p className="text-xs text-gray-500 mt-1">批量图片合成视频 · 转场特效</p>
+          {supportsFastEncoding && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-emerald-400/80">
+              <Zap className="w-3 h-3" />
+              <span>快速编码模式 (VideoEncoder)</span>
+            </div>
+          )}
         </div>
 
         {/* Scrollable Sections */}
@@ -664,7 +723,7 @@ export function VideoComposer() {
             {isBatchGenerating ? (
               <>
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                批量合成中...
+                并发合成中... (×{CONCURRENCY})
               </>
             ) : (
               <>
@@ -681,7 +740,7 @@ export function VideoComposer() {
               取消生成
             </button>
           )}
-          {completedVideos > 0 && !isBatchGenerating && (
+          {completedVideos > 0 && (
             <button
               onClick={handleDownloadAll}
               className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2 transition-colors"
@@ -721,6 +780,12 @@ export function VideoComposer() {
                 {completedVideos} 个视频已完成
               </span>
             )}
+            {isBatchGenerating && (
+              <span className="text-violet-400 text-sm flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                并发×{CONCURRENCY}
+              </span>
+            )}
           </div>
 
           {/* Batch Progress Bar */}
@@ -749,7 +814,7 @@ export function VideoComposer() {
           })()}
 
           <div className="flex gap-2">
-            {completedVideos > 0 && !isBatchGenerating && (
+            {completedVideos > 0 && (
               <button
                 onClick={handleDownloadAll}
                 className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-violet-900/20"
@@ -909,12 +974,12 @@ export function VideoComposer() {
                       <span className="text-sm font-medium text-gray-300">{selectedFolder.name}</span>
                       <span className="text-xs text-gray-500">({selectedFolder.images.length} 张图片)</span>
                     </div>
-                    {selectedFolder.isCompleted && selectedFolder.videoUrl && (
+                    {selectedFolder.isCompleted && selectedFolder.videoBlob && (
                       <button
-                        onClick={() => handleDownloadVideo(selectedFolder)}
+                        onClick={() => handleDownloadFolder(selectedFolder)}
                         className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2"
                       >
-                        <Download className="w-4 h-4" /> 下载视频
+                        <Download className="w-4 h-4" /> 下载 (图片+视频)
                       </button>
                     )}
                   </div>
