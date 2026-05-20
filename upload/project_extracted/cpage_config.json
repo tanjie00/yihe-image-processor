@@ -1,0 +1,12 @@
+{
+  "name": "cleanslate-ai-智能去字-&-水印工具",
+  "description": "",
+  "icon": "",
+  "coverImg": "https://agent.nuwax.com/api/f/s3/app-dev/20260516/8ff2903fff7640eca3db2bdef97e4d0e.png",
+  "coverImgSourceType": "SYSTEM",
+  "needLogin": true,
+  "proxyConfigs": null,
+  "pageArgConfigs": null,
+  "dataSourcePlugins": null,
+  "dataSourceWorkflows": null
+}

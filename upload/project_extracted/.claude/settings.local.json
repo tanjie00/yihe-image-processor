@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__fetch__fetch",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''/app/project_workspace/7210275819622400/scripts/logo_batch_processor.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python3 -c \"from PIL import Image; print\\(''Pillow'', Image.__version__\\)\")",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -m pip install Pillow -q)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''/app/project_workspace/7210275819622400/scripts/logo_batch_processor.py''\\).read\\(\\)\\); print\\(''Python syntax OK''\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''scripts/logo_batch_processor.py''\\).read\\(\\)\\); print\\(''Python syntax OK''\\)\")"
+    ]
+  }
+}
