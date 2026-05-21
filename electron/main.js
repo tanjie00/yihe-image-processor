@@ -3,6 +3,13 @@ const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
+// 启用硬件加速，提升渲染性能
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+// 限制渲染进程内存，避免 OOM
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
+
 let splashWindow = null;
 let mainWindow = null;
 let server = null;

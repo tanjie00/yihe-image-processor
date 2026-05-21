@@ -50,14 +50,14 @@ interface FolderGroup {
   error?: string;
 }
 
-// 动态并发数：Web Worker 模式使用 CPU 核心数（最多8），否则3
+// 动态并发数：限制为2，避免占用过多系统资源导致卡顿
 const CONCURRENCY = supportsWorkerEncoding
-  ? Math.min(navigator.hardwareConcurrency || 4, 8)
-  : 3;
+  ? Math.min(navigator.hardwareConcurrency || 2, 2)
+  : 2;
 
 const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   aspectRatio: 'custom',
-  fps: 60,
+  fps: 30,
   imageDuration: 2,
   transitionDuration: 1,
   transition: 'fade',
@@ -196,7 +196,10 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     setBgmLoading(true);
 
     try {
-      const buffer = await decodeBgmAudio(track.url);
+      // 内置音乐使用 builtin: 前缀，自定义音乐使用 File 对象
+      const audioSource = track.isBuiltIn ? `builtin:${track.id}` : track.url;
+      if (!audioSource) throw new Error('无可用音频源');
+      const buffer = await decodeBgmAudio(audioSource);
       setBgmAudioBuffer(buffer);
     } catch (err: any) {
       setBgmError(`加载失败: ${err.message}`);
@@ -241,11 +244,36 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
 
     stopBgmPreview();
 
+    // 内置音乐无法直接用 <audio> 预览，使用 AudioContext 播放
+    if (track?.isBuiltIn && bgmAudioBuffer) {
+      try {
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createBufferSource();
+        source.buffer = bgmAudioBuffer;
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = bgmVolume;
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        source.start(0);
+        source.onended = () => {
+          audioCtx.close();
+          setIsBgmPlaying(false);
+        };
+        bgmAudioRef.current = { pause: () => { source.stop(); audioCtx.close(); } } as any;
+        setIsBgmPlaying(true);
+        return;
+      } catch (e) {
+        console.warn('内置音乐预览失败:', e);
+      }
+    }
+
     const audio = new Audio();
     if (customBgmFile) {
       audio.src = URL.createObjectURL(customBgmFile);
-    } else if (track) {
+    } else if (track?.url) {
       audio.src = track.url;
+    } else {
+      return;
     }
     audio.volume = bgmVolume;
     audio.play().catch(() => {});
@@ -255,7 +283,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     audio.addEventListener('ended', () => {
       setIsBgmPlaying(false);
     });
-  }, [selectedBgmId, customBgmFile, bgmVolume]);
+  }, [selectedBgmId, customBgmFile, bgmVolume, bgmAudioBuffer]);
 
   const stopBgmPreview = useCallback(() => {
     if (bgmAudioRef.current) {

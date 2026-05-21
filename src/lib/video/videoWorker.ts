@@ -40,11 +40,11 @@ interface VideoProgress {
 // ---- 常量 ----
 
 const ASPECT_RATIO_RESOLUTIONS: Record<Exclude<VideoAspectRatio, 'custom'>, { width: number; height: number }> = {
-  '16:9': { width: 1920, height: 1080 },
-  '9:16': { width: 1080, height: 1920 },
-  '4:3': { width: 1440, height: 1080 },
-  '1:1': { width: 1080, height: 1080 },
-  '3:4': { width: 1080, height: 1440 },
+  '16:9': { width: 1280, height: 720 },
+  '9:16': { width: 720, height: 1280 },
+  '4:3': { width: 960, height: 720 },
+  '1:1': { width: 720, height: 720 },
+  '3:4': { width: 720, height: 960 },
 };
 
 function getAspectRatioResolution(
@@ -468,9 +468,9 @@ async function generateVideoInWorker(
       percent,
     });
 
-    // 每 16 帧让出事件循环
-    if (frameIndex % 16 === 0) {
-      await new Promise(r => setTimeout(r, 0));
+    // 每 8 帧让出事件循环，更频繁让出以降低 CPU 占用
+    if (frameIndex % 8 === 0) {
+      await new Promise(r => setTimeout(r, 1));
     }
   }
 

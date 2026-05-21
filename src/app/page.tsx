@@ -13,7 +13,20 @@ import { CustomSliceModal } from '@/lib/original/components/CustomSliceModal';
 import { DetailSlicePreview } from '@/lib/original/components/DetailSlicePreview';
 import { sliceImage } from '@/lib/original/services/sliceService';
 import { saveSettings, loadSettings, saveImages, loadImages, saveLogos, loadLogos, saveBatchResults, loadBatchResults, saveSlicedResults, loadSlicedResults, clearAllStorageData } from '@/lib/original/services/storageService';
-import { VideoComposer } from '@/components/VideoComposer';
+import dynamic from 'next/dynamic';
+
+// Lazy-load VideoComposer to reduce initial bundle size and improve startup performance
+const VideoComposer = dynamic(
+  () => import('@/components/VideoComposer').then(mod => ({ default: mod.VideoComposer })),
+  { ssr: false, loading: () => (
+    <div className="flex items-center justify-center h-full text-gray-500">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+        <span className="text-sm">加载视频合成模块...</span>
+      </div>
+    </div>
+  )}
+);
 
 // JSZip lazy-loaded on demand to reduce page load memory pressure
 const MAX_ZIP_ITEMS = 200;
@@ -221,7 +234,7 @@ export default function Home() {
     restore();
   }, []);
 
-  // Debounced save — triggers 1s after last state change
+  // Debounced save — triggers 3s after last state change (increased from 1s to reduce I/O load)
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
@@ -243,7 +256,7 @@ export default function Home() {
       } catch (err) {
         console.error('Failed to save state:', err);
       }
-    }, 1000);
+    }, 3000);
   }, [mode, aiModel, logoSettings, enableBatchCrop, batchCropAspect, batchCropWidth, batchCropHeight, detailCropRatio, detailCropWidthPx, detailCropHeightPx, currentFolderPath, collapsedSections, logoItems, batchResults, slicedResults]);
 
   // Schedule save whenever key state changes

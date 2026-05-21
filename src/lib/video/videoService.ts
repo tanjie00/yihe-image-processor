@@ -21,13 +21,13 @@ export type { VideoAspectRatio, TransitionTypeName, VideoSettings, VideoProgress
 
 // ==================== 常量 ====================
 
-/** 宽高比对应的分辨率映射 */
+/** 宽高比对应的分辨率映射（降低默认分辨率以提升性能） */
 const ASPECT_RATIO_RESOLUTIONS: Record<Exclude<VideoAspectRatio, 'custom'>, { width: number; height: number }> = {
-  '16:9': { width: 1920, height: 1080 },
-  '9:16': { width: 1080, height: 1920 },
-  '4:3': { width: 1440, height: 1080 },
-  '1:1': { width: 1080, height: 1080 },
-  '3:4': { width: 1080, height: 1440 },
+  '16:9': { width: 1280, height: 720 },
+  '9:16': { width: 720, height: 1280 },
+  '4:3': { width: 960, height: 720 },
+  '1:1': { width: 720, height: 720 },
+  '3:4': { width: 720, height: 960 },
 };
 
 /** 转场效果中文标签 */
@@ -86,7 +86,7 @@ export function getAspectRatioResolution(
 
 /** Worker 实例缓存池 */
 const workerPool: Worker[] = [];
-const MAX_WORKERS = Math.min(navigator.hardwareConcurrency || 4, 8);
+const MAX_WORKERS = Math.min(navigator.hardwareConcurrency || 2, 2);
 
 /**
  * 获取或创建 Worker 实例
@@ -470,8 +470,8 @@ async function generateVideoFast(
       percent: Math.round(((frameIndex + 1) / layout.totalFrames) * 100),
     });
 
-    // 每 8 帧让出事件循环，保持 UI 响应
-    if (frameIndex % 8 === 0) {
+    // 每 4 帧让出事件循环，保持 UI 响应
+    if (frameIndex % 4 === 0) {
       await new Promise(r => setTimeout(r, 0));
     }
   }
@@ -605,18 +605,36 @@ async function generateVideoFallback(
  * @param signal - 取消信号
  * @returns 生成的视频 Blob（MP4 格式，兼容路径为 WebM）
  */
-/** 解码背景音乐为 AudioBuffer */
+/** 解码背景音乐为 AudioBuffer
+ *  - 内置音乐：使用 Web Audio API 程序化生成
+ *  - 自定义上传：从 File 对象解码
+ *  - 外部 URL：从网络下载并解码（已弃用，可能因 CORS 不可用）
+ */
 export async function decodeBgmAudio(urlOrFile: string | File): Promise<AudioBuffer> {
+  // 内置音乐：使用 bgmGenerator 程序化生成
+  if (typeof urlOrFile === 'string' && urlOrFile.startsWith('builtin:')) {
+    const trackId = urlOrFile.replace('builtin:', '');
+    const { generateBgmAudioBuffer } = await import('./bgmGenerator');
+    return generateBgmAudioBuffer(trackId);
+  }
+
+  // 自定义上传的文件
+  if (typeof urlOrFile !== 'string') {
+    const audioCtx = new AudioContext();
+    try {
+      const arrayBuffer = await urlOrFile.arrayBuffer();
+      return await audioCtx.decodeAudioData(arrayBuffer);
+    } finally {
+      await audioCtx.close();
+    }
+  }
+
+  // 外部 URL（兼容旧逻辑，可能因 CORS 不可用）
   const audioCtx = new AudioContext();
   try {
-    let arrayBuffer: ArrayBuffer;
-    if (typeof urlOrFile === 'string') {
-      const response = await fetch(urlOrFile);
-      if (!response.ok) throw new Error(`音频下载失败: ${response.status}`);
-      arrayBuffer = await response.arrayBuffer();
-    } else {
-      arrayBuffer = await urlOrFile.arrayBuffer();
-    }
+    const response = await fetch(urlOrFile);
+    if (!response.ok) throw new Error(`音频下载失败: ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
     return await audioCtx.decodeAudioData(arrayBuffer);
   } finally {
     await audioCtx.close();
