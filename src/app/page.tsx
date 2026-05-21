@@ -1875,9 +1875,9 @@ export default function Home() {
           )}
 
           {/* Header / Stats */}
-          <header className="border-b border-white/[0.06] px-6 py-3 bg-gradient-to-r from-gray-900/80 via-gray-900/60 to-transparent backdrop-blur-xl z-20">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-4 min-w-0 flex-shrink-0">
+          <header className="border-b border-white/[0.06] px-6 py-3 bg-gradient-to-r from-gray-900/80 via-gray-900/60 to-transparent backdrop-blur-xl z-20 flex-shrink-0">
+            <div className="flex items-center justify-between gap-4 flex-wrap min-h-[40px]">
+              <div className="flex items-center gap-4 min-w-0">
                  <span className="text-gray-400 text-sm whitespace-nowrap">
                     已加载 {images.length} 张图片
                     {currentFolderPath && currentFolderNode && (
@@ -1901,25 +1901,25 @@ export default function Home() {
                       <button
                         onClick={toggleSelectAll}
                         title={allSelected ? '取消全选' : '全选'}
-                        className="px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap"
+                        className="px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all inline-flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap"
                       >
-                        {allSelected ? <CheckSquare className="w-4 h-4 text-indigo-400 flex-shrink-0" /> : <Square className="w-4 h-4 flex-shrink-0" />}
+                        {allSelected ? <CheckSquare className="w-4 h-4 text-indigo-400" /> : <Square className="w-4 h-4" />}
                         {allSelected ? '取消全选' : '全选'}
                       </button>
                       <button
                         onClick={handleDownloadSelected}
                         disabled={isZipping}
                         title="批量下载"
-                        className="px-3 py-1.5 text-sm bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-500 hover:to-indigo-500 disabled:from-indigo-800 disabled:to-indigo-800 disabled:text-gray-400 text-white rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-900/30 whitespace-nowrap"
+                        className="px-3 py-1.5 text-sm bg-gradient-to-r from-indigo-600 to-indigo-600 hover:from-indigo-500 hover:to-indigo-500 disabled:from-indigo-800 disabled:to-indigo-800 disabled:text-gray-400 text-white rounded-lg transition-all inline-flex items-center gap-1.5 shadow-lg shadow-indigo-900/30 whitespace-nowrap"
                       >
                         {isZipping ? (
                             <>
-                               <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                               <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                打包中...
                             </>
                         ) : (
                             <>
-                               <Package className="w-4 h-4 flex-shrink-0" />
+                               <Package className="w-4 h-4" />
                                {selectedCompletedImages.length > 0 ? `下载选中 (${selectedCompletedImages.length})` : '批量下载'}
                             </>
                         )}
@@ -1930,17 +1930,17 @@ export default function Home() {
                  <button 
                     onClick={clearAll}
                     title="清空所有"
-                    className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 hover:border-red-500/20 rounded-lg transition-all flex items-center gap-1.5 border border-transparent whitespace-nowrap"
+                    className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 hover:border-red-500/20 rounded-lg transition-all inline-flex items-center gap-1.5 border border-transparent whitespace-nowrap"
                     disabled={isProcessing}
                  >
-                    <Trash2 className="w-4 h-4 flex-shrink-0"/> 清空所有
+                    <Trash2 className="w-4 h-4"/> 清空所有
                  </button>
-                 <label title="添加图片" className="cursor-pointer px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap">
-                    <Upload className="w-4 h-4 flex-shrink-0"/> 添加图片
+                 <label title="添加图片" className="cursor-pointer px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all inline-flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap">
+                    <Upload className="w-4 h-4"/> 添加图片
                     <input type="file" multiple accept="image/*" onChange={handleImageUpload} className="hidden" />
                  </label>
-                 <label title="选择文件夹" className="cursor-pointer px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap">
-                    <FolderOpen className="w-4 h-4 flex-shrink-0"/> 选择文件夹
+                 <label title="选择文件夹" className="cursor-pointer px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.1] text-white rounded-lg transition-all inline-flex items-center gap-1.5 border border-white/[0.04] whitespace-nowrap">
+                    <FolderOpen className="w-4 h-4"/> 选择文件夹
                     <input type="file" onChange={handleFolderUpload} className="hidden" {...({ webkitdirectory: 'true', directory: 'true' } as Record<string, string>)} />
                  </label>
               </div>

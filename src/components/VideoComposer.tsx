@@ -1229,9 +1229,9 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         )}
 
         {/* Header / Stats */}
-        <header className="border-b border-gray-800 px-6 py-3 bg-gray-900/50 backdrop-blur z-20">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4 min-w-0 flex-shrink-0">
+        <header className="border-b border-gray-800 px-6 py-3 bg-gray-900/50 backdrop-blur z-20 flex-shrink-0">
+          <div className="flex items-center justify-between gap-4 flex-wrap min-h-[40px]">
+            <div className="flex items-center gap-4 min-w-0">
               <span className="text-gray-400 text-sm whitespace-nowrap">
                 已加载 {totalImages} 张图片 · {folderGroups.length} 个文件夹
               </span>
@@ -1263,26 +1263,26 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 <button
                   onClick={handleDownloadAll}
                   title="下载全部"
-                  className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-violet-900/20 whitespace-nowrap"
+                  className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-lg shadow-violet-900/20 whitespace-nowrap"
                 >
-                  <Package className="w-4 h-4 flex-shrink-0" />
+                  <Package className="w-4 h-4" />
                   下载全部 ({completedVideos})
                 </button>
               )}
               <button
                 onClick={handleClearAll}
                 title="清空所有"
-                className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                className="px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
                 disabled={isBatchGenerating}
               >
-                <Trash2 className="w-4 h-4 flex-shrink-0"/> 清空所有
+                <Trash2 className="w-4 h-4"/> 清空所有
               </button>
-              <label title="添加图片" className="cursor-pointer px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <Upload className="w-4 h-4 flex-shrink-0"/> 添加图片
+              <label title="添加图片" className="cursor-pointer px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap">
+                <Upload className="w-4 h-4"/> 添加图片
                 <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
               </label>
-              <label title="选择文件夹" className="cursor-pointer px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap">
-                <FolderOpen className="w-4 h-4 flex-shrink-0"/> 选择文件夹
+              <label title="选择文件夹" className="cursor-pointer px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors inline-flex items-center gap-1.5 whitespace-nowrap">
+                <FolderOpen className="w-4 h-4"/> 选择文件夹
                 <input
                   ref={folderInputRef}
                   type="file"

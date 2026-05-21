@@ -341,7 +341,7 @@ export const LogoControls: React.FC<LogoControlsProps> = ({
                         </div>
                     </div>
 
-                    <div className="w-full md:w-80 bg-gray-800/60 p-6 flex flex-col border-l border-white/[0.06] overflow-y-auto">
+                    <div className="w-full md:w-80 bg-gray-800/60 p-6 flex flex-col border-l border-white/[0.06] overflow-y-auto scrollbar-thin">
                         <div className="flex justify-between items-center mb-8">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2">
                                 <Move className="w-6 h-6 text-indigo-400" />

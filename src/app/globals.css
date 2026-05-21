@@ -206,3 +206,6 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: rgba(139, 92, 246, 0.5);
 }
+.scrollbar-thin::-webkit-scrollbar-thumb:active {
+  background: rgba(139, 92, 246, 0.7);
+}
