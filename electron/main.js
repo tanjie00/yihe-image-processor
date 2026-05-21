@@ -93,7 +93,9 @@ function serveFile(filePath, res) {
     }
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       'Access-Control-Allow-Origin': '*',
     });
     res.end(data);
@@ -141,6 +143,9 @@ function createMainWindow(serverUrl) {
       webSecurity: true,
     },
   });
+
+  // Clear HTTP cache to ensure UI updates are always reflected
+  mainWindow.webContents.session.clearCache().catch(() => {});
 
   // Remove the default Electron menu bar
   mainWindow.setMenu(null);

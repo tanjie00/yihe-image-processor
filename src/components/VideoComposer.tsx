@@ -806,7 +806,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
               <Ratio className="w-4 h-4 text-violet-400" />
               视频比例
             </label>
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('ratio') ? '' : 'rotate-180'}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('ratio') ? '' : 'rotate-180'}`} />
           </button>
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('ratio') ? 'max-h-0' : 'max-h-[500px]'}`}>
             <div className="px-3 pb-3 grid grid-cols-2 gap-2">
@@ -866,7 +866,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
               <Sparkles className="w-4 h-4 text-fuchsia-400" />
               转场效果
             </label>
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('transition') ? '' : 'rotate-180'}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('transition') ? '' : 'rotate-180'}`} />
           </button>
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('transition') ? 'max-h-0' : 'max-h-[600px]'}`}>
             <div className="px-3 pb-3 space-y-3">
@@ -904,7 +904,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
               <Clock className="w-4 h-4 text-amber-400" />
               时间设置
             </label>
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('time') ? '' : 'rotate-180'}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('time') ? '' : 'rotate-180'}`} />
           </button>
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('time') ? 'max-h-0' : 'max-h-[400px]'}`}>
             <div className="px-3 pb-3 space-y-4">
@@ -952,7 +952,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
               <Settings2 className="w-4 h-4 text-emerald-400" />
               质量设置
             </label>
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('quality') ? '' : 'rotate-180'}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('quality') ? '' : 'rotate-180'}`} />
           </button>
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('quality') ? 'max-h-0' : 'max-h-[400px]'}`}>
             <div className="px-3 pb-3 space-y-4">
@@ -1003,7 +1003,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 <span className="text-[10px] bg-pink-500/20 text-pink-300 px-1.5 py-0.5 rounded-full">已选</span>
               )}
             </label>
-            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('music') ? '' : 'rotate-180'}`} />
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('music') ? '' : 'rotate-180'}`} />
           </button>
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('music') ? 'max-h-0' : 'max-h-[800px]'} overflow-y-auto scrollbar-thin`}>
             <div className="px-3 pb-3 space-y-3">

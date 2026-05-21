@@ -1436,7 +1436,7 @@ export default function Home() {
                 <Zap className="w-4 h-4 text-indigo-400" />
                 模型选择
               </label>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('model') ? '' : 'rotate-180'}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('model') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('model') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 grid grid-cols-1 gap-2">
@@ -1490,7 +1490,7 @@ export default function Home() {
                 <Key className="w-4 h-4 text-indigo-400" />
                 API 设置
               </label>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('api') ? '' : 'rotate-180'}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('api') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('api') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 space-y-3">
@@ -1549,7 +1549,7 @@ export default function Home() {
                 <Wand2 className="w-4 h-4 text-indigo-400" />
                 操作模式
               </label>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('mode') ? '' : 'rotate-180'}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('mode') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('mode') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 grid grid-cols-1 gap-2">
@@ -1611,7 +1611,7 @@ export default function Home() {
                 <CropIcon className="w-4 h-4 text-indigo-400" />
                 批量裁剪参数
               </label>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('crop') ? '' : 'rotate-180'}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('crop') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('crop') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 bg-white/[0.02] space-y-3">
@@ -1683,7 +1683,7 @@ export default function Home() {
                   <Stamp className="w-4 h-4 text-indigo-400" />
                   Logo 配置
                 </label>
-                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('logo') ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('logo') ? '' : 'rotate-180'}`} />
               </button>
               <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('logo') ? 'max-h-0' : 'max-h-[800px]'}`}>
                 <div className="px-3 pb-3">
@@ -1711,7 +1711,7 @@ export default function Home() {
                 <Maximize className="w-4 h-4 text-indigo-400" />
                 详情页裁剪
               </label>
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('detailCrop') ? '' : 'rotate-180'}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('detailCrop') ? '' : 'rotate-180'}`} />
             </button>
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('detailCrop') ? 'max-h-0' : 'max-h-[500px]'}`}>
               <div className="px-3 pb-3 bg-white/[0.02] space-y-3">
