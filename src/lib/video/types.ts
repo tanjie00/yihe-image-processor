@@ -43,4 +43,6 @@ export interface VideoProgress {
   total: number;
   /** 完成百分比 0~100 */
   percent: number;
+  /** 背景音乐编码是否失败 */
+  bgmFailed?: boolean;
 }

@@ -301,6 +301,7 @@ async function generateVideoFast(
 
   // 预编码音频（如果提供了背景音乐）
   let audioResult: AudioEncodeResult | null = null;
+  let bgmEncodeFailed = false;
   if (settings.audioFile) {
     onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0 });
     audioResult = await encodeAudioToOpus(
@@ -309,6 +310,12 @@ async function generateVideoFast(
       videoDuration,
       signal
     );
+    if (!audioResult) {
+      bgmEncodeFailed = true;
+      console.warn('BGM encoding failed for:', settings.audioFile.name, '- video will be generated without audio');
+      // Notify the caller that BGM failed
+      onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0, bgmFailed: true });
+    }
   }
 
   // 创建画布
@@ -503,6 +510,8 @@ async function generateVideoFallback(
     } catch (err) {
       console.warn('背景音乐混入失败，将生成无声视频:', err);
       console.warn('Audio file info:', settings.audioFile.name, 'type:', settings.audioFile.type, 'size:', settings.audioFile.size);
+      // Notify the caller that BGM failed
+      onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0, bgmFailed: true });
       // Clean up audio context if it was partially created
       if (audioContext) {
         try { await audioContext.close(); } catch { /* ignore */ }

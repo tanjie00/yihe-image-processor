@@ -1409,7 +1409,7 @@ export default function Home() {
           </div>
 
           {/* Scrollable Sections Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scroll-gpu">
 
           {/* Model Selector - Collapsible */}
           <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-white/[0.01]">
@@ -1958,7 +1958,7 @@ export default function Home() {
           </header>
 
           {/* Image Grid */}
-          <div className="flex-1 overflow-y-auto p-6 z-10">
+          <div className="flex-1 overflow-y-auto p-6 z-10 scroll-gpu">
             {images.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-white/[0.08] rounded-3xl bg-gradient-to-br from-gray-900/40 via-gray-900/20 to-indigo-900/10 m-4 backdrop-blur-sm">
                 <div className="p-8 bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-full mb-6 ring-1 ring-indigo-500/20 animate-pulse">

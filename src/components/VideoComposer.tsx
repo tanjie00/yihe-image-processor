@@ -43,6 +43,16 @@ interface FolderGroup {
   error?: string;
 }
 
+/** Tree node for folder hierarchy navigation */
+interface FolderTreeNode {
+  name: string;
+  fullPath: string;
+  imageCount: number;
+  directImageCount: number;
+  children: FolderTreeNode[];
+  previewUrl?: string;
+}
+
 const CONCURRENCY = 3; // Process up to 3 folders simultaneously
 
 const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
@@ -102,6 +112,7 @@ export function VideoComposer() {
   const [bgmFile, setBgmFile] = useState<File | null>(null);
   const [bgmVolume, setBgmVolume] = useState(0.5);
   const [bgmPlaying, setBgmPlaying] = useState(false);
+  const [bgmWarning, setBgmWarning] = useState<string | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmInputRef = useRef<HTMLInputElement>(null);
 
@@ -162,18 +173,15 @@ export function VideoComposer() {
       return;
     }
 
-    // Validate the audio file is actually playable
+    // Validate the audio file is actually playable by the browser
     const testUrl = URL.createObjectURL(file);
     const testAudio = new Audio();
-    testAudio.preload = 'metadata';
+    testAudio.preload = 'auto'; // Load full audio for thorough validation
 
-    const cleanup = () => {
+    const acceptBgm = () => {
+      clearTimeout(validationTimeout);
       URL.revokeObjectURL(testUrl);
       testAudio.src = '';
-    };
-
-    testAudio.oncanplaythrough = () => {
-      cleanup();
       // Stop any currently playing BGM
       if (bgmAudioRef.current) {
         bgmAudioRef.current.pause();
@@ -181,43 +189,29 @@ export function VideoComposer() {
       }
       setBgmFile(file);
       setBgmPlaying(false);
+      setBgmWarning(null); // Clear any previous warning
     };
 
-    testAudio.onerror = () => {
-      cleanup();
-      console.error('Audio validation failed for:', file.name, 'type:', file.type, 'size:', file.size);
-      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n推荐使用 MP3 或 WAV 格式`);
+    const rejectBgm = (reason: string) => {
+      clearTimeout(validationTimeout);
+      URL.revokeObjectURL(testUrl);
+      testAudio.src = '';
+      console.error('Audio validation failed:', reason, '| file:', file.name, 'type:', file.type, 'size:', file.size);
+      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n原因: ${reason}\n推荐使用 MP3 或 WAV 格式`);
     };
 
-    // Timeout fallback - if neither oncanplaythrough nor onerror fires
-    const timeout = setTimeout(() => {
-      cleanup();
-      // Assume it's OK if the browser didn't explicitly reject it
-      if (bgmAudioRef.current) {
-        bgmAudioRef.current.pause();
-        bgmAudioRef.current = null;
-      }
-      setBgmFile(file);
-      setBgmPlaying(false);
-    }, 5000);
+    // Success: browser can play this audio
+    testAudio.oncanplaythrough = () => acceptBgm();
 
-    testAudio.oncanplaythrough = () => {
-      clearTimeout(timeout);
-      cleanup();
-      if (bgmAudioRef.current) {
-        bgmAudioRef.current.pause();
-        bgmAudioRef.current = null;
-      }
-      setBgmFile(file);
-      setBgmPlaying(false);
-    };
+    // Error: browser cannot decode/play this format
+    testAudio.onerror = () => rejectBgm('浏览器不支持该音频编码');
 
-    testAudio.onerror = () => {
-      clearTimeout(timeout);
-      cleanup();
-      console.error('Audio validation failed for:', file.name, 'type:', file.type, 'size:', file.size);
-      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n推荐使用 MP3 或 WAV 格式`);
-    };
+    // Timeout fallback - if validation takes too long, accept the file anyway
+    // (some formats may not trigger oncanplaythrough but still work during video encoding)
+    const validationTimeout = setTimeout(() => {
+      console.warn('BGM validation timeout, accepting file:', file.name);
+      acceptBgm();
+    }, 8000);
 
     testAudio.src = testUrl;
     e.target.value = '';
@@ -260,6 +254,7 @@ export function VideoComposer() {
     }
     setBgmFile(null);
     setBgmPlaying(false);
+    setBgmWarning(null);
   };
 
   // Cleanup BGM audio on unmount
@@ -421,6 +416,115 @@ export function VideoComposer() {
     return folderGroups.find(g => g.path === selectedFolderPath) || null;
   }, [folderGroups, selectedFolderPath]);
 
+  // ==================== Folder Tree Navigation ====================
+
+  const [folderNavPath, setFolderNavPath] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
+  // Build folder tree from allImages (similar to page.tsx folderTree)
+  const folderTree = useMemo(() => {
+    const root: FolderTreeNode = { name: '根目录', fullPath: '', imageCount: 0, directImageCount: 0, children: [] };
+    const nodeMap = new Map<string, FolderTreeNode>();
+    nodeMap.set('', root);
+
+    for (const img of allImages) {
+      const path = img.relativePath || '';
+      if (!path) {
+        root.directImageCount++;
+        root.imageCount++;
+        if (!root.previewUrl) root.previewUrl = img.url;
+        continue;
+      }
+
+      const parts = path.split('/');
+      let currentPath = '';
+      for (let i = 0; i < parts.length; i++) {
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+
+        if (!nodeMap.has(currentPath)) {
+          const node: FolderTreeNode = {
+            name: parts[i],
+            fullPath: currentPath,
+            imageCount: 0,
+            directImageCount: 0,
+            children: [],
+            previewUrl: i === parts.length - 1 ? img.url : undefined,
+          };
+          nodeMap.set(currentPath, node);
+          const parent = nodeMap.get(parentPath);
+          if (parent) parent.children.push(node);
+        }
+
+        const node = nodeMap.get(currentPath)!;
+        node.imageCount++;
+        if (i === parts.length - 1) {
+          node.directImageCount++;
+          if (!node.previewUrl) node.previewUrl = img.url;
+        }
+      }
+    }
+
+    return root;
+  }, [allImages]);
+
+  // Helper to find a tree node by path
+  const getTreeNode = useMemo(() => {
+    return (path: string | null): FolderTreeNode | null => {
+      if (!path) return folderTree;
+      const parts = path.split('/');
+      let current = folderTree;
+      for (const part of parts) {
+        const child = current.children.find(c => c.name === part);
+        if (!child) return null;
+        current = child;
+      }
+      return current;
+    };
+  }, [folderTree]);
+
+  // Current navigation node
+  const currentNavNode = useMemo(() => {
+    return getTreeNode(folderNavPath);
+  }, [folderNavPath, getTreeNode]);
+
+  // Breadcrumb path segments for navigation
+  const navBreadcrumbSegments = useMemo(() => {
+    if (!folderNavPath) return [];
+    return folderNavPath.split('/').map((name, idx, arr) => ({
+      name,
+      fullPath: arr.slice(0, idx + 1).join('/'),
+    }));
+  }, [folderNavPath]);
+
+  // Get folder groups visible at current navigation level
+  const visibleFolderGroups = useMemo(() => {
+    if (!folderNavPath) {
+      // At root: show all groups that have no parent in our folder list
+      // OR show all groups if no nesting exists
+      return folderGroups;
+    }
+    // Show groups whose path starts with folderNavPath and is a direct child
+    return folderGroups.filter(g => {
+      if (g.path === folderNavPath) return true;
+      if (g.path.startsWith(folderNavPath + '/')) {
+        // Only direct children (no deeper nesting in the path relative to nav)
+        const relativePath = g.path.substring(folderNavPath.length + 1);
+        return !relativePath.includes('/');
+      }
+      return false;
+    });
+  }, [folderGroups, folderNavPath]);
+
+  const toggleFolderExpand = (path: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
   // ==================== Video Generation (Concurrent Pool) ====================
 
   const handleBatchGenerate = async () => {
@@ -477,6 +581,10 @@ export function VideoComposer() {
             setFolderGroups(prev => prev.map(g =>
               g.path === group.path ? { ...g, progress } : g
             ));
+            // Detect BGM encoding failure and show warning
+            if (progress.bgmFailed) {
+              setBgmWarning(`背景音乐 "${bgmFile?.name}" 编码失败，视频将以无声方式生成。建议使用 MP3 或 WAV 格式。`);
+            }
           };
 
           const blob = await generateVideo(imageElements, settings, onProgress, abortController.signal);
@@ -522,67 +630,57 @@ export function VideoComposer() {
 
   // ==================== Download ====================
 
-  // Robust download helper — works in more environments
-  const triggerDownload = useCallback((blob: Blob, filename: string) => {
+  // Robust async download helper — properly awaits each method, no race conditions
+  const triggerDownload = useCallback(async (blob: Blob, filename: string) => {
     try {
-      // Try modern File System Access API first (Chrome 86+)
+      // Method 1: Try modern File System Access API first (Chrome 86+ / Electron)
       if ('showSaveFilePicker' in window) {
-        (async () => {
-          try {
-            const handle = await (window as any).showSaveFilePicker({
-              suggestedName: filename,
-              types: filename.endsWith('.zip')
-                ? [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }]
-                : [{ description: 'WebM Video', accept: { 'video/webm': ['.webm'] } }],
-            });
-            const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            return;
-          } catch (err: any) {
-            // User cancelled or unsupported — fall through to legacy method
-            if (err.name === 'AbortError') return;
-          }
-        })();
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: filename,
+            types: filename.endsWith('.zip')
+              ? [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }]
+              : [{ description: 'WebM Video', accept: { 'video/webm': ['.webm'] } }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return; // ✅ Download successful via File System Access API
+        } catch (err: any) {
+          if (err.name === 'AbortError') return; // User cancelled save dialog
+          // Fall through to legacy method
+          console.warn('showSaveFilePicker failed, using legacy download:', err);
+        }
       }
 
-      // Fallback: create object URL + <a> click
+      // Method 2: Legacy <a> click fallback (works in all browsers + Electron)
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
-      a.style.position = 'fixed';
-      a.style.left = '-9999px';
-      a.style.top = '-9999px';
-      a.style.opacity = '0';
+      a.style.display = 'none';
       document.body.appendChild(a);
 
-      // Use MouseEvent for better browser compatibility
-      requestAnimationFrame(() => {
-        const evt = new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        });
-        a.dispatchEvent(evt);
+      // Direct click for maximum compatibility
+      a.click();
 
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 1000);
-      });
+      // Clean up after delay (allow download to start)
+      setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 5000);
     } catch (err) {
       console.error('Download failed:', err);
       alert('下载失败，请重试');
     }
   }, []);
 
-  const handleDownloadVideo = useCallback((group: FolderGroup) => {
+  const handleDownloadVideo = useCallback(async (group: FolderGroup) => {
     if (!group.videoBlob) {
       alert('视频文件不存在，请重新生成');
       return;
     }
-    triggerDownload(group.videoBlob, `${group.name}_video.webm`);
+    await triggerDownload(group.videoBlob, `${group.name}_video.webm`);
   }, [triggerDownload]);
 
   const handleDownloadFolder = useCallback(async (group: FolderGroup) => {
@@ -606,7 +704,7 @@ export function VideoComposer() {
       zip.file(videoPath, group.videoBlob);
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      triggerDownload(blob, `${group.name}.zip`);
+      await triggerDownload(blob, `${group.name}.zip`);
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
@@ -646,7 +744,7 @@ export function VideoComposer() {
       }
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      triggerDownload(blob, 'videos_batch.zip');
+      await triggerDownload(blob, 'videos_batch.zip');
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
@@ -708,7 +806,7 @@ export function VideoComposer() {
         </div>
 
         {/* Scrollable Sections */}
-        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin will-change-scroll-position">
+        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scroll-gpu">
 
         {/* Video Ratio - Collapsible */}
         <div className="border border-gray-700/50 rounded-xl overflow-hidden">
@@ -982,6 +1080,21 @@ export function VideoComposer() {
                 onChange={handleBgmUpload}
                 className="hidden"
               />
+              {/* BGM Encoding Warning */}
+              {bgmWarning && (
+                <div className="flex items-start gap-2 bg-amber-900/30 border border-amber-700/40 rounded-lg p-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-amber-300 text-xs">{bgmWarning}</p>
+                    <button
+                      onClick={() => setBgmWarning(null)}
+                      className="text-amber-500 text-[10px] hover:text-amber-300 mt-1"
+                    >
+                      关闭提示
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1144,7 +1257,7 @@ export function VideoComposer() {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 z-10 will-change-scroll-position">
+        <div className="flex-1 overflow-y-auto p-6 z-10 scroll-gpu">
           {folderGroups.length === 0 ? (
             /* Empty State */
             <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 m-4">
@@ -1173,9 +1286,127 @@ export function VideoComposer() {
             </div>
           ) : (
             <>
+              {/* Folder Tree Navigation - Breadcrumb + Tree */}
+              {folderTree.children.length > 0 && (
+                <div className="mb-4 border border-gray-700/50 rounded-xl bg-gray-900/60 overflow-hidden">
+                  {/* Breadcrumb */}
+                  <div className="flex items-center gap-1.5 px-3 py-2 border-b border-gray-800/50 bg-gray-900/80 text-xs overflow-x-auto scrollbar-thin">
+                    <button
+                      onClick={() => setFolderNavPath(null)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors whitespace-nowrap ${!folderNavPath ? 'bg-violet-600/30 text-violet-300' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    >
+                      <Folder className="w-3.5 h-3.5" />
+                      全部
+                    </button>
+                    {navBreadcrumbSegments.map((seg, idx) => (
+                      <React.Fragment key={seg.fullPath}>
+                        <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
+                        <button
+                          onClick={() => setFolderNavPath(seg.fullPath)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors whitespace-nowrap ${idx === navBreadcrumbSegments.length - 1 ? 'bg-violet-600/30 text-violet-300' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                        >
+                          <Folder className="w-3.5 h-3.5" />
+                          {seg.name}
+                        </button>
+                      </React.Fragment>
+                    ))}
+                  </div>
+
+                  {/* Tree view of folders at current level */}
+                  <div className="px-2 py-1.5 max-h-48 overflow-y-auto scrollbar-thin">
+                    {/* Parent folders (tree nodes with children) */}
+                    {currentNavNode && currentNavNode.children.filter(c => c.children.length > 0).map(child => {
+                      const isExpanded = expandedFolders.has(child.fullPath);
+                      const childGroup = folderGroups.find(g => g.path === child.fullPath);
+                      return (
+                        <div key={child.fullPath}>
+                          <button
+                            onClick={() => toggleFolderExpand(child.fullPath)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                            )}
+                            <Folder className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-200 truncate">{child.name}</span>
+                            <span className="text-[10px] text-gray-500 ml-auto flex-shrink-0">{child.imageCount} 张</span>
+                            {childGroup?.isCompleted && (
+                              <span className="text-[10px] text-green-400 flex-shrink-0">已合成</span>
+                            )}
+                            {childGroup?.isGenerating && (
+                              <div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                            )}
+                          </button>
+                          {isExpanded && (
+                            <div className="ml-5 border-l border-gray-700/50 pl-1">
+                              {child.children.map(subChild => {
+                                const subGroup = folderGroups.find(g => g.path === subChild.fullPath);
+                                return (
+                                  <button
+                                    key={subChild.fullPath}
+                                    onClick={() => setFolderNavPath(subChild.fullPath)}
+                                    className="w-full flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
+                                  >
+                                    <Folder className="w-3.5 h-3.5 text-violet-400/70 flex-shrink-0" />
+                                    <span className="text-xs text-gray-300 truncate">{subChild.name}</span>
+                                    <span className="text-[10px] text-gray-500 ml-auto flex-shrink-0">{subChild.imageCount} 张</span>
+                                    {subGroup?.isCompleted && (
+                                      <span className="text-[10px] text-green-400 flex-shrink-0">✓</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                              {/* Also show leaf folder groups directly under this parent */}
+                              {childGroup && (
+                                <button
+                                  onClick={() => setSelectedFolderPath(child.fullPath)}
+                                  className="w-full flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
+                                >
+                                  <ImageIcon className="w-3.5 h-3.5 text-fuchsia-400/70 flex-shrink-0" />
+                                  <span className="text-xs text-gray-400 truncate">本目录图片 ({child.directImageCount} 张)</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Leaf folders (no sub-children, direct image folders) */}
+                    {currentNavNode && currentNavNode.children.filter(c => c.children.length === 0).map(child => {
+                      const childGroup = folderGroups.find(g => g.path === child.fullPath);
+                      return (
+                        <button
+                          key={child.fullPath}
+                          onClick={() => {
+                            setFolderNavPath(child.fullPath);
+                            setSelectedFolderPath(child.fullPath);
+                          }}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-left ${selectedFolderPath === child.fullPath ? 'bg-violet-600/20 text-violet-200' : 'hover:bg-gray-800/50 text-gray-300'}`}
+                        >
+                          <Folder className="w-4 h-4 text-fuchsia-400/70 flex-shrink-0" />
+                          <span className="text-sm truncate">{child.name}</span>
+                          <span className="text-[10px] text-gray-500 ml-auto flex-shrink-0">{child.imageCount} 张</span>
+                          {childGroup?.isCompleted && (
+                            <span className="text-[10px] text-green-400 flex-shrink-0">已合成</span>
+                          )}
+                          {childGroup?.isGenerating && (
+                            <div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          )}
+                          {childGroup?.error && (
+                            <span className="text-[10px] text-red-400 flex-shrink-0">失败</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Folder Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
-                {folderGroups.map((group) => {
+                {visibleFolderGroups.map((group) => {
                   const hasVideo = group.isCompleted && group.videoUrl;
                   return (
                     <div

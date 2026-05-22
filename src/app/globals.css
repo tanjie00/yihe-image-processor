@@ -165,8 +165,22 @@
   -webkit-overflow-scrolling: touch;
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
+  contain: layout style paint;
 }
 
 .will-change-scroll-position {
-  will-change: scroll-position, transform;
+  will-change: scroll-position;
+}
+
+/* GPU-accelerated scroll containers */
+.scroll-gpu {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Content visibility for off-screen items to reduce rendering cost */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
 }
