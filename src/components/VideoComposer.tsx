@@ -151,17 +151,75 @@ export function VideoComposer() {
   const handleBgmUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('audio/') && !/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i.test(file.name)) {
-      alert('请上传音频文件 (mp3, wav, ogg, m4a)');
+
+    // More permissive format check - support common audio formats
+    const audioExtensions = /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|webm)$/i;
+    const isAudioType = file.type.startsWith('audio/') || file.type === 'application/octet-stream';
+    const isAudioExt = audioExtensions.test(file.name);
+
+    if (!isAudioType && !isAudioExt) {
+      alert('请上传音频文件 (支持 mp3, wav, ogg, m4a, aac, flac, opus)');
       return;
     }
-    setBgmFile(file);
-    // Stop any currently playing BGM
-    if (bgmAudioRef.current) {
-      bgmAudioRef.current.pause();
-      bgmAudioRef.current = null;
-    }
-    setBgmPlaying(false);
+
+    // Validate the audio file is actually playable
+    const testUrl = URL.createObjectURL(file);
+    const testAudio = new Audio();
+    testAudio.preload = 'metadata';
+
+    const cleanup = () => {
+      URL.revokeObjectURL(testUrl);
+      testAudio.src = '';
+    };
+
+    testAudio.oncanplaythrough = () => {
+      cleanup();
+      // Stop any currently playing BGM
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current = null;
+      }
+      setBgmFile(file);
+      setBgmPlaying(false);
+    };
+
+    testAudio.onerror = () => {
+      cleanup();
+      console.error('Audio validation failed for:', file.name, 'type:', file.type, 'size:', file.size);
+      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n推荐使用 MP3 或 WAV 格式`);
+    };
+
+    // Timeout fallback - if neither oncanplaythrough nor onerror fires
+    const timeout = setTimeout(() => {
+      cleanup();
+      // Assume it's OK if the browser didn't explicitly reject it
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current = null;
+      }
+      setBgmFile(file);
+      setBgmPlaying(false);
+    }, 5000);
+
+    testAudio.oncanplaythrough = () => {
+      clearTimeout(timeout);
+      cleanup();
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current = null;
+      }
+      setBgmFile(file);
+      setBgmPlaying(false);
+    };
+
+    testAudio.onerror = () => {
+      clearTimeout(timeout);
+      cleanup();
+      console.error('Audio validation failed for:', file.name, 'type:', file.type, 'size:', file.size);
+      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n推荐使用 MP3 或 WAV 格式`);
+    };
+
+    testAudio.src = testUrl;
     e.target.value = '';
   };
 
@@ -174,12 +232,24 @@ export function VideoComposer() {
       if (bgmAudioRef.current) {
         bgmAudioRef.current.pause();
       }
-      const audio = new Audio(URL.createObjectURL(bgmFile));
-      audio.volume = bgmVolume;
-      audio.onended = () => setBgmPlaying(false);
-      audio.play();
-      bgmAudioRef.current = audio;
-      setBgmPlaying(true);
+      try {
+        const audio = new Audio(URL.createObjectURL(bgmFile));
+        audio.volume = bgmVolume;
+        audio.onended = () => setBgmPlaying(false);
+        audio.onerror = () => {
+          setBgmPlaying(false);
+          alert('音频播放失败，该格式可能不受浏览器支持，请尝试 MP3 或 WAV 格式');
+        };
+        audio.play().catch(err => {
+          setBgmPlaying(false);
+          console.error('BGM play failed:', err);
+        });
+        bgmAudioRef.current = audio;
+        setBgmPlaying(true);
+      } catch (err) {
+        console.error('BGM playback error:', err);
+        alert('音频播放失败，请尝试其他格式');
+      }
     }
   };
 
@@ -335,7 +405,8 @@ export function VideoComposer() {
       });
     });
 
-    folderArray.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    // Sort by full path to preserve folder hierarchy order
+    folderArray.sort((a, b) => a.path.localeCompare(b.path, 'zh-CN'));
 
     // Preserve existing video results
     setFolderGroups(prev => {
@@ -451,23 +522,70 @@ export function VideoComposer() {
 
   // ==================== Download ====================
 
-  const handleDownloadVideo = (group: FolderGroup) => {
-    if (!group.videoBlob) return;
-    // Direct download of the video file (no ZIP)
-    const url = URL.createObjectURL(group.videoBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${group.name}_video.webm`;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 200);
-  };
+  // Robust download helper — works in more environments
+  const triggerDownload = useCallback((blob: Blob, filename: string) => {
+    try {
+      // Try modern File System Access API first (Chrome 86+)
+      if ('showSaveFilePicker' in window) {
+        (async () => {
+          try {
+            const handle = await (window as any).showSaveFilePicker({
+              suggestedName: filename,
+              types: filename.endsWith('.zip')
+                ? [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }]
+                : [{ description: 'WebM Video', accept: { 'video/webm': ['.webm'] } }],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            return;
+          } catch (err: any) {
+            // User cancelled or unsupported — fall through to legacy method
+            if (err.name === 'AbortError') return;
+          }
+        })();
+      }
 
-  const handleDownloadFolder = async (group: FolderGroup) => {
+      // Fallback: create object URL + <a> click
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.position = 'fixed';
+      a.style.left = '-9999px';
+      a.style.top = '-9999px';
+      a.style.opacity = '0';
+      document.body.appendChild(a);
+
+      // Use MouseEvent for better browser compatibility
+      requestAnimationFrame(() => {
+        const evt = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        });
+        a.dispatchEvent(evt);
+
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 1000);
+      });
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('下载失败，请重试');
+    }
+  }, []);
+
+  const handleDownloadVideo = useCallback((group: FolderGroup) => {
+    if (!group.videoBlob) {
+      alert('视频文件不存在，请重新生成');
+      return;
+    }
+    triggerDownload(group.videoBlob, `${group.name}_video.webm`);
+  }, [triggerDownload]);
+
+  const handleDownloadFolder = useCallback(async (group: FolderGroup) => {
     if (!group.videoBlob) {
       alert('视频文件不存在，请重新生成');
       return;
@@ -488,28 +606,21 @@ export function VideoComposer() {
       zip.file(videoPath, group.videoBlob);
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${group.name}.zip`;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 500);
+      triggerDownload(blob, `${group.name}.zip`);
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
     } finally {
       setIsDownloading(false);
     }
-  };
+  }, [triggerDownload]);
 
-  const handleDownloadAll = async () => {
+  const handleDownloadAll = useCallback(async () => {
     const completedGroups = folderGroups.filter(g => g.isCompleted && g.videoBlob);
-    if (completedGroups.length === 0) return;
+    if (completedGroups.length === 0) {
+      alert('没有已完成的视频可下载');
+      return;
+    }
     if (completedGroups.length === 1) {
       handleDownloadFolder(completedGroups[0]);
       return;
@@ -535,24 +646,14 @@ export function VideoComposer() {
       }
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'videos_batch.zip';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }, 500);
+      triggerDownload(blob, 'videos_batch.zip');
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
     } finally {
       setIsDownloading(false);
     }
-  };
+  }, [folderGroups, handleDownloadFolder, triggerDownload]);
 
   const handleClearAll = () => {
     folderGroups.forEach(g => { if (g.videoUrl) URL.revokeObjectURL(g.videoUrl); });
@@ -877,7 +978,7 @@ export function VideoComposer() {
               <input
                 ref={bgmInputRef}
                 type="file"
-                accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm"
                 onChange={handleBgmUpload}
                 className="hidden"
               />

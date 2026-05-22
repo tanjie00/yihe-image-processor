@@ -186,8 +186,18 @@ async function encodeAudioToOpus(
 ): Promise<AudioEncodeResult | null> {
   try {
     const arrayBuffer = await audioFile.arrayBuffer();
-    const audioCtx = new AudioContext({ sampleRate: 48000 });
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    
+    // Try decoding with AudioContext
+    let audioBuffer: AudioBuffer;
+    try {
+      const audioCtx = new AudioContext({ sampleRate: 48000 });
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      await audioCtx.close();
+    } catch (decodeErr) {
+      console.error('Audio decode failed with AudioContext, format may be unsupported:', decodeErr);
+      console.error('File info:', audioFile.name, 'type:', audioFile.type, 'size:', audioFile.size);
+      return null;
+    }
 
     // 计算目标采样数（匹配视频时长）
     const targetSamples = Math.ceil(targetDuration * 48000);
@@ -212,7 +222,6 @@ async function encodeAudioToOpus(
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
-    await audioCtx.close();
 
     // 检查 AudioEncoder 是否可用
     if (typeof AudioEncoder === 'undefined') {
@@ -493,6 +502,11 @@ async function generateVideoFallback(
       audioSource = dest as unknown as MediaStreamAudioSourceNode;
     } catch (err) {
       console.warn('背景音乐混入失败，将生成无声视频:', err);
+      console.warn('Audio file info:', settings.audioFile.name, 'type:', settings.audioFile.type, 'size:', settings.audioFile.size);
+      // Clean up audio context if it was partially created
+      if (audioContext) {
+        try { await audioContext.close(); } catch { /* ignore */ }
+      }
     }
   }
 

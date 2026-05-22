@@ -163,8 +163,10 @@
 .overflow-y-auto {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
 }
 
 .will-change-scroll-position {
-  will-change: scroll-position;
+  will-change: scroll-position, transform;
 }
