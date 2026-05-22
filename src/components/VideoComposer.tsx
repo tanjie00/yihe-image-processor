@@ -971,7 +971,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       return;
     }
     if (completedGroups.length === 1) {
-      handleDownloadFolder(completedGroups[0]);
+      await handleDownloadFolder(completedGroups[0]);
       return;
     }
 

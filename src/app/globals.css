@@ -217,6 +217,8 @@
   overscroll-behavior: contain;
   overflow: clip;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
 }
 
 .scroll-container::-webkit-scrollbar {
@@ -243,4 +245,35 @@
   content-visibility: auto;
   contain-intrinsic-size: 0 120px;
   contain: layout style;
+}
+
+/* Video progress card — lightweight containment for frequent updates */
+.video-progress-card {
+  contain: layout style;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 100px;
+}
+
+/* Sidebar section card — reduce repaints during scroll */
+.sidebar-section {
+  contain: layout style;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 60px;
+}
+
+/* Reduce paint during animations and transitions */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Smooth scroll on non-touch devices */
+@media (hover: hover) {
+  .scroll-container {
+    scroll-behavior: smooth;
+  }
 }

@@ -1,10 +1,8 @@
 /**
- * 背景音乐库 v3
+ * 背景音乐库 v3 — 扩展至 54 首内置曲目
  *
  * 使用 Web Audio API 内置生成音乐，无需网络下载。
  * 彻底解决外部 URL 失效、CORS 阻止、离线不可用等问题。
- *
- * v3: 扩展至 54 首内置曲目，每类 9 首
  *
  * 同时保留自定义上传音乐功能。
  */
@@ -28,7 +26,7 @@ export interface BgmCategory {
 }
 
 /**
- * 内置音乐库
+ * 内置音乐库 v3 — 6 分类 × 9 首 = 54 首内置曲目
  * 所有音乐由 Web Audio API 实时生成，无需下载
  */
 export const BGM_CATEGORIES: BgmCategory[] = [

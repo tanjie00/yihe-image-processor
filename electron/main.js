@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, shell, Menu, ipcMain, dialog, session } = require('electron');
+const { app, BrowserWindow, screen, shell, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -7,9 +7,9 @@ const fs = require('fs');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-// 更多 GPU 优化标志，提升滚动流畅度
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,RawDraw');
-// 限制渲染进程内存，避免 OOM（适当提高以支持大文件处理）
+// 启用更多 GPU 特性以提升滚动性能
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,RawDraw,Vulkan');
+// 限制渲染进程内存，避免 OOM
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=768');
 
 let splashWindow = null;
@@ -195,46 +195,79 @@ function createMainWindow(serverUrl) {
 
 // ==================== IPC Handlers ====================
 
-// Handle save-file IPC: shows save dialog and writes file to disk
+/**
+ * 处理渲染进程的文件保存请求
+ * 弹出保存对话框，将 Blob 数据写入用户选择的路径
+ */
 ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
   try {
-    const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: fileName,
       filters: [
-        { name: 'All Files', extensions: ['*'] },
+        { name: '视频文件', extensions: ['mp4', 'webm', 'zip'] },
+        { name: '所有文件', extensions: ['*'] },
       ],
     });
 
-    if (canceled || !savePath) {
-      throw new Error('cancelled');
+    if (canceled || !filePath) {
+      return { success: false, error: '用户取消保存' };
     }
 
-    await fs.promises.writeFile(savePath, Buffer.from(buffer));
-    return { success: true, path: savePath };
+    // 将 ArrayBuffer 写入文件
+    const uint8Array = new Uint8Array(buffer);
+    fs.writeFileSync(filePath, uint8Array);
+
+    return { success: true, path: filePath };
   } catch (err) {
-    if (err.message === 'cancelled' || err.message?.includes('取消')) {
-      throw new Error('cancelled');
+    console.error('Save file error:', err);
+    return { success: false, error: err.message || '保存失败' };
+  }
+});
+
+/**
+ * 处理批量文件保存请求
+ * 弹出选择目录对话框，将所有文件保存到用户选择的目录
+ */
+ipcMain.handle('save-files-to-dir', async (event, files) => {
+  try {
+    const { canceled, filePath: dirPath } = await dialog.showOpenDialog(mainWindow, {
+      title: '选择保存目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+
+    if (canceled || !dirPath || dirPath.length === 0) {
+      return { success: false, savedCount: 0, errors: ['用户取消'] };
     }
-    throw err;
+
+    const targetDir = dirPath[0];
+    let savedCount = 0;
+    const errors = [];
+
+    for (const file of files) {
+      try {
+        const filePath = path.join(targetDir, file.fileName);
+        const uint8Array = new Uint8Array(file.buffer);
+        // 确保子目录存在
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(filePath, uint8Array);
+        savedCount++;
+      } catch (err) {
+        errors.push(`${file.fileName}: ${err.message}`);
+      }
+    }
+
+    return { success: true, savedCount, errors: errors.length > 0 ? errors : undefined };
+  } catch (err) {
+    console.error('Save files to dir error:', err);
+    return { success: false, savedCount: 0, errors: [err.message] };
   }
 });
 
 // App lifecycle
 app.whenReady().then(async () => {
-  // Handle will-download events from the session
-  session.defaultSession.on('will-download', (event, item, webContents) => {
-    // Allow the download to proceed - set save path via dialog
-    const fileName = item.getFilename();
-    const savePath = dialog.showSaveDialogSync(mainWindow, {
-      defaultPath: fileName,
-    });
-    if (savePath) {
-      item.setSavePath(savePath);
-    } else {
-      item.cancel();
-    }
-  });
-
   createSplashWindow();
 
   try {
