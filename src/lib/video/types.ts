@@ -27,6 +27,10 @@ export interface VideoSettings {
   transition: TransitionTypeName;
   /** 视频质量 0~1，默认 0.8 */
   quality: number;
+  /** 背景音乐文件 */
+  audioFile?: File;
+  /** 背景音乐音量 0~1 */
+  audioVolume?: number;
 }
 
 /** 视频生成进度信息 */

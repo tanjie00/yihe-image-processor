@@ -9,6 +9,7 @@
  * - 使用 VideoEncoder API 精确控制每帧时间戳，无需实时等待
  * - 渲染速度仅受 CPU 限制，而非帧间隔时间
  * - 支持并发处理多个文件夹的视频生成
+ * - 支持背景音乐混入
  */
 
 import { Muxer, ArrayBufferTarget } from 'webm-muxer';
@@ -143,6 +144,126 @@ function renderFrame(
   }
 }
 
+// ==================== 音频编码 ====================
+
+/**
+ * 从 AudioBuffer 中提取指定范围的音频数据为 f32-planar 格式
+ */
+function getAudioDataSlice(
+  buffer: AudioBuffer,
+  startFrame: number,
+  frameCount: number,
+  numberOfChannels: number
+): Float32Array {
+  const data = new Float32Array(numberOfChannels * frameCount);
+  for (let ch = 0; ch < numberOfChannels; ch++) {
+    const channelData = buffer.getChannelData(Math.min(ch, buffer.numberOfChannels - 1));
+    for (let i = 0; i < frameCount; i++) {
+      data[ch * frameCount + i] = channelData[startFrame + i] || 0;
+    }
+  }
+  return data;
+}
+
+interface AudioEncodeResult {
+  chunks: EncodedAudioChunk[];
+  sampleRate: number;
+  numberOfChannels: number;
+}
+
+/**
+ * 编码音频文件为 Opus 格式
+ * - 解码音频文件
+ * - 使用 OfflineAudioContext 重采样到 48kHz 立体声并应用音量
+ * - 使用 AudioEncoder 编码为 Opus
+ * - 如果音频比视频短，自动循环
+ */
+async function encodeAudioToOpus(
+  audioFile: File,
+  volume: number,
+  targetDuration: number,
+  signal?: AbortSignal
+): Promise<AudioEncodeResult | null> {
+  try {
+    const arrayBuffer = await audioFile.arrayBuffer();
+    const audioCtx = new AudioContext({ sampleRate: 48000 });
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    // 计算目标采样数（匹配视频时长）
+    const targetSamples = Math.ceil(targetDuration * 48000);
+    const numberOfChannels = 2; // 立体声
+
+    // 创建离线上下文进行重采样 + 音量调整
+    const offlineCtx = new OfflineAudioContext(numberOfChannels, targetSamples, 48000);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+
+    // 应用音量
+    const gainNode = offlineCtx.createGain();
+    gainNode.gain.value = volume;
+
+    source.connect(gainNode);
+    gainNode.connect(offlineCtx.destination);
+    source.start(0);
+
+    // 如果音频比视频短，循环播放
+    if (audioBuffer.duration < targetDuration) {
+      source.loop = true;
+    }
+
+    const renderedBuffer = await offlineCtx.startRendering();
+    await audioCtx.close();
+
+    // 检查 AudioEncoder 是否可用
+    if (typeof AudioEncoder === 'undefined') {
+      console.warn('AudioEncoder 不可用，跳过音频编码');
+      return null;
+    }
+
+    const chunks: EncodedAudioChunk[] = [];
+    const encoder = new AudioEncoder({
+      output: (chunk) => {
+        chunks.push(chunk);
+      },
+      error: (e) => {
+        console.error('AudioEncoder error:', e);
+      }
+    });
+
+    encoder.configure({
+      codec: 'opus',
+      sampleRate: 48000,
+      numberOfChannels,
+      bitrate: 128000,
+    });
+
+    // 以 20ms 的块输入音频数据
+    const chunkSize = Math.floor(48000 * 0.02);
+    for (let offset = 0; offset < targetSamples; offset += chunkSize) {
+      if (signal?.aborted) break;
+      const frameCount = Math.min(chunkSize, targetSamples - offset);
+      const audioData = new AudioData({
+        format: 'f32-planar',
+        sampleRate: 48000,
+        numberOfFrames: frameCount,
+        numberOfChannels,
+        timestamp: Math.round(offset / 48000 * 1_000_000), // 微秒
+        data: getAudioDataSlice(renderedBuffer, offset, frameCount, numberOfChannels),
+      });
+      encoder.encode(audioData);
+      audioData.close();
+    }
+
+    await encoder.flush();
+    encoder.close();
+
+    return { chunks, sampleRate: 48000, numberOfChannels };
+  } catch (err) {
+    console.error('音频编码失败:', err);
+    return null;
+  }
+}
+
 // ==================== 快速路径：VideoEncoder + webm-muxer ====================
 
 /**
@@ -152,6 +273,7 @@ function renderFrame(
  * - 无需实时等待帧间隔，渲染速度仅受 CPU 限制
  * - 每帧的时间戳由代码精确控制，确保视频时长正确
  * - 编码器以最高速度处理，不依赖 wall-clock 时间
+ * - 支持背景音乐混入
  */
 async function generateVideoFast(
   images: RenderImage[],
@@ -165,22 +287,45 @@ async function generateVideoFast(
   const layout = computeFrameLayout(images.length, settings);
   const frameDuration = Math.round(1_000_000 / fps); // 微秒
 
+  // 计算视频时长（秒），用于音频编码
+  const videoDuration = layout.totalFrames / fps;
+
+  // 预编码音频（如果提供了背景音乐）
+  let audioResult: AudioEncodeResult | null = null;
+  if (settings.audioFile) {
+    onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0 });
+    audioResult = await encodeAudioToOpus(
+      settings.audioFile,
+      settings.audioVolume ?? 0.5,
+      videoDuration,
+      signal
+    );
+  }
+
   // 创建画布
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d')!;
 
-  // 创建 webm-muxer
+  // 根据 audioResult 创建对应的 muxer 配置
   const target = new ArrayBufferTarget();
-  const muxer = new Muxer({
+  const muxerConfig: any = {
     target,
     video: {
       codec: 'V_VP9',
       width,
       height,
     },
-  });
+  };
+  if (audioResult) {
+    muxerConfig.audio = {
+      codec: 'A_OPUS',
+      numberOfChannels: audioResult.numberOfChannels,
+      sampleRate: audioResult.sampleRate,
+    };
+  }
+  const muxer = new Muxer(muxerConfig);
 
   // 计算比特率
   const pixels = width * height;
@@ -253,10 +398,18 @@ async function generateVideoFast(
 
   // 等待编码器完成所有帧的编码
   await encoder.flush();
+  encoder.close();
+
+  // 添加音频数据到 muxer
+  if (audioResult) {
+    for (const chunk of audioResult.chunks) {
+      muxer.addAudioChunk(chunk);
+    }
+  }
+
   muxer.finalize();
 
   const blob = new Blob([target.buffer], { type: 'video/webm' });
-  encoder.close();
 
   return blob;
 }
@@ -270,6 +423,7 @@ async function generateVideoFast(
  * - 使用 captureStream(0) + requestFrame() 手动控制帧捕获
  * - 每帧仅等待最小间隔（2ms），而非完整的帧间隔
  * - 编码完成后修正视频播放速率
+ * - 支持背景音乐混入（通过 Web Audio API）
  */
 async function generateVideoFallback(
   images: RenderImage[],
@@ -301,6 +455,47 @@ async function generateVideoFallback(
     ? 'video/webm;codecs=vp9'
     : 'video/webm';
 
+  // 如果提供了背景音乐，使用 Web Audio API 混入音频轨道
+  let audioContext: AudioContext | null = null;
+  let audioSource: MediaStreamAudioSourceNode | null = null;
+
+  if (settings.audioFile) {
+    try {
+      audioContext = new AudioContext({ sampleRate: 48000 });
+      const audioBuffer = await audioContext.decodeAudioData(await settings.audioFile.arrayBuffer());
+
+      // 创建 MediaStreamDestination 获取音频流
+      const dest = audioContext.createMediaStreamDestination();
+      const bufferSource = audioContext.createBufferSource();
+      bufferSource.buffer = audioBuffer;
+
+      // 应用音量
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = settings.audioVolume ?? 0.5;
+
+      bufferSource.connect(gainNode);
+      gainNode.connect(dest);
+
+      // 如果音频比视频短，循环播放
+      const videoDuration = layout.totalFrames / fps;
+      if (audioBuffer.duration < videoDuration) {
+        bufferSource.loop = true;
+      }
+
+      bufferSource.start(0);
+
+      // 将音频轨道添加到视频流
+      const audioTracks = dest.stream.getAudioTracks();
+      for (const track of audioTracks) {
+        stream.addTrack(track);
+      }
+
+      audioSource = dest as unknown as MediaStreamAudioSourceNode;
+    } catch (err) {
+      console.warn('背景音乐混入失败，将生成无声视频:', err);
+    }
+  }
+
   const recorder = new MediaRecorder(stream, {
     mimeType,
     videoBitsPerSecond: bitrate,
@@ -317,6 +512,7 @@ async function generateVideoFallback(
   for (let frameIndex = 0; frameIndex < layout.totalFrames; frameIndex++) {
     if (signal?.aborted) {
       recorder.stop();
+      if (audioContext) audioContext.close();
       throw new DOMException('视频生成已取消', 'AbortError');
     }
 
@@ -349,13 +545,16 @@ async function generateVideoFallback(
   return new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => {
       if (signal?.aborted) {
+        if (audioContext) audioContext.close();
         reject(new DOMException('视频生成已取消', 'AbortError'));
         return;
       }
       const blob = new Blob(chunks, { type: mimeType });
+      if (audioContext) audioContext.close();
       resolve(blob);
     };
     recorder.onerror = (event) => {
+      if (audioContext) audioContext.close();
       reject(new Error(`视频录制失败: ${(event as ErrorEvent).message || '未知错误'}`));
     };
     recorder.stop();

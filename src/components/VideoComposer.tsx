@@ -6,7 +6,7 @@ import {
   X, Loader2, Video, FolderOpen, Pause, RotateCcw,
   Sparkles, Clock, Ratio, Layers, Folder, ChevronDown,
   ChevronRight, Check, Settings2, Zap, Eye, Package,
-  CheckSquare, Square, AlertCircle
+  CheckSquare, Square, AlertCircle, Music, Volume2
 } from 'lucide-react';
 import {
   generateVideo,
@@ -93,12 +93,20 @@ export function VideoComposer() {
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; startTime: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Background music state
+  const [bgmFile, setBgmFile] = useState<File | null>(null);
+  const [bgmVolume, setBgmVolume] = useState(0.5);
+  const [bgmPlaying, setBgmPlaying] = useState(false);
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bgmInputRef = useRef<HTMLInputElement>(null);
+
   // Collapsible sections state
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['transition', 'time', 'quality']));
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['transition', 'time', 'quality', 'bgm']));
   const toggleSection = (section: string) => {
     setCollapsedSections(prev => {
       const next = new Set(prev);
@@ -138,6 +146,61 @@ export function VideoComposer() {
     const s = Math.floor(seconds % 60);
     return m > 0 ? `${m}分${s}秒` : `${s}秒`;
   };
+
+  // ==================== BGM Controls ====================
+  const handleBgmUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('audio/') && !/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/i.test(file.name)) {
+      alert('请上传音频文件 (mp3, wav, ogg, m4a)');
+      return;
+    }
+    setBgmFile(file);
+    // Stop any currently playing BGM
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current = null;
+    }
+    setBgmPlaying(false);
+    e.target.value = '';
+  };
+
+  const toggleBgmPlayback = () => {
+    if (!bgmFile) return;
+    if (bgmPlaying && bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      setBgmPlaying(false);
+    } else {
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+      }
+      const audio = new Audio(URL.createObjectURL(bgmFile));
+      audio.volume = bgmVolume;
+      audio.onended = () => setBgmPlaying(false);
+      audio.play();
+      bgmAudioRef.current = audio;
+      setBgmPlaying(true);
+    }
+  };
+
+  const removeBgm = () => {
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current = null;
+    }
+    setBgmFile(null);
+    setBgmPlaying(false);
+  };
+
+  // Cleanup BGM audio on unmount
+  useEffect(() => {
+    return () => {
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+        bgmAudioRef.current = null;
+      }
+    };
+  }, []);
 
   // ==================== File Handling ====================
 
@@ -261,7 +324,7 @@ export function VideoComposer() {
 
     const folderArray: FolderGroup[] = [];
     groups.forEach((images, path) => {
-      // Extract the last segment as the display name
+      // Extract the last segment as the display name, preserve full path
       const name = path ? path.split('/').pop()! : '根目录';
       folderArray.push({
         name,
@@ -333,6 +396,11 @@ export function VideoComposer() {
             settings.customWidth = customWidth;
             settings.customHeight = customHeight;
           }
+          // Pass background music settings
+          if (bgmFile) {
+            settings.audioFile = bgmFile;
+            settings.audioVolume = bgmVolume;
+          }
 
           const onProgress = (progress: VideoProgress) => {
             setFolderGroups(prev => prev.map(g =>
@@ -373,8 +441,6 @@ export function VideoComposer() {
 
   const handleCancel = () => {
     abortRef.current?.abort();
-    // Don't clear batch progress immediately — let the workers finish their current tasks
-    // Just mark batch as no longer generating so the UI updates
     setIsBatchGenerating(false);
     setBatchProgress(null);
     // Clear isGenerating on any groups still generating (they will be aborted)
@@ -386,37 +452,58 @@ export function VideoComposer() {
   // ==================== Download ====================
 
   const handleDownloadVideo = (group: FolderGroup) => {
-    if (!group.videoBlob || !group.videoUrl) return;
-    // Download single folder as ZIP with images + video
-    handleDownloadFolder(group);
+    if (!group.videoBlob) return;
+    // Direct download of the video file (no ZIP)
+    const url = URL.createObjectURL(group.videoBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${group.name}_video.webm`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
   };
 
   const handleDownloadFolder = async (group: FolderGroup) => {
-    if (!group.videoBlob) return;
-
+    if (!group.videoBlob) {
+      alert('视频文件不存在，请重新生成');
+      return;
+    }
+    setIsDownloading(true);
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
-      // Add original images
+      // Add original images - preserve full folder path
       for (const img of group.images) {
-        zip.file(`${group.name}/${img.name}`, img.file);
+        const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : img.name;
+        zip.file(imgPath, img.file);
       }
 
-      // Add video
-      zip.file(`${group.name}/${group.name}_video.webm`, group.videoBlob);
+      // Add video - use full path for folder hierarchy
+      const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}_video.webm`;
+      zip.file(videoPath, group.videoBlob);
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${group.name}.zip`;
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 500);
     } catch (err) {
       console.error('ZIP failed', err);
+      alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -428,6 +515,7 @@ export function VideoComposer() {
       return;
     }
 
+    setIsDownloading(true);
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
@@ -435,13 +523,15 @@ export function VideoComposer() {
       for (const group of completedGroups) {
         if (!group.videoBlob) continue;
 
-        // Add original images
+        // Add original images - preserve full folder path
         for (const img of group.images) {
-          zip.file(`${group.name}/${img.name}`, img.file);
+          const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
+          zip.file(imgPath, img.file);
         }
 
-        // Add video
-        zip.file(`${group.name}/${group.name}_video.webm`, group.videoBlob);
+        // Add video - preserve full folder path
+        const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}/${group.name}_video.webm`;
+        zip.file(videoPath, group.videoBlob);
       }
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
@@ -449,12 +539,18 @@ export function VideoComposer() {
       const a = document.createElement('a');
       a.href = url;
       a.download = 'videos_batch.zip';
+      a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 500);
     } catch (err) {
       console.error('ZIP failed', err);
+      alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -511,7 +607,7 @@ export function VideoComposer() {
         </div>
 
         {/* Scrollable Sections */}
-        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin will-change-scroll-position">
 
         {/* Video Ratio - Collapsible */}
         <div className="border border-gray-700/50 rounded-xl overflow-hidden">
@@ -707,6 +803,88 @@ export function VideoComposer() {
           </div>
         </div>
 
+        {/* Background Music - Collapsible */}
+        <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+          <button
+            onClick={() => toggleSection('bgm')}
+            className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
+          >
+            <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+              <Music className="w-4 h-4 text-pink-400" />
+              背景音乐
+            </label>
+            <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('bgm') ? '' : 'rotate-180'}`} />
+          </button>
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('bgm') ? 'max-h-0' : 'max-h-[400px]'}`}>
+            <div className="px-3 pb-3 space-y-3">
+              {!bgmFile ? (
+                <button
+                  onClick={() => bgmInputRef.current?.click()}
+                  className="w-full py-3 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 text-gray-400 hover:text-violet-300 flex items-center justify-center gap-2 transition-colors text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  上传背景音乐
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  {/* Audio file info */}
+                  <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2.5">
+                    <Music className="w-4 h-4 text-pink-400 flex-shrink-0" />
+                    <span className="text-xs text-gray-300 truncate flex-1">{bgmFile.name}</span>
+                    <button
+                      onClick={toggleBgmPlayback}
+                      className="w-7 h-7 rounded-md bg-gray-700 hover:bg-violet-600 text-gray-300 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
+                      title={bgmPlaying ? '暂停' : '试听'}
+                    >
+                      {bgmPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={removeBgm}
+                      className="w-7 h-7 rounded-md bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
+                      title="移除"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Volume slider */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-300 flex items-center gap-1.5">
+                        <Volume2 className="w-3.5 h-3.5" />
+                        音量
+                      </span>
+                      <span className="text-xs text-gray-500 font-mono">{Math.round(bgmVolume * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={bgmVolume}
+                      onChange={e => {
+                        const vol = parseFloat(e.target.value);
+                        setBgmVolume(vol);
+                        if (bgmAudioRef.current) {
+                          bgmAudioRef.current.volume = vol;
+                        }
+                      }}
+                      className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                    />
+                  </div>
+                </div>
+              )}
+              <input
+                ref={bgmInputRef}
+                type="file"
+                accept="audio/*,.mp3,.wav,.ogg,.m4a"
+                onChange={handleBgmUpload}
+                className="hidden"
+              />
+            </div>
+          </div>
+        </div>
+
         </div>
 
         {/* Fixed Action Button */}
@@ -743,10 +921,20 @@ export function VideoComposer() {
           {completedVideos > 0 && (
             <button
               onClick={handleDownloadAll}
-              className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2 transition-colors"
+              disabled={isDownloading}
+              className={`w-full py-2.5 rounded-xl text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2 transition-colors ${isDownloading ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              <Package className="w-4 h-4" />
-              下载全部视频 ({completedVideos})
+              {isDownloading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  打包中...
+                </>
+              ) : (
+                <>
+                  <Package className="w-4 h-4" />
+                  下载全部视频 ({completedVideos})
+                </>
+              )}
             </button>
           )}
         </div>
@@ -786,6 +974,12 @@ export function VideoComposer() {
                 并发×{CONCURRENCY}
               </span>
             )}
+            {bgmFile && (
+              <span className="text-pink-400 text-sm flex items-center gap-1">
+                <Music className="w-3 h-3" />
+                BGM: {bgmFile.name}
+              </span>
+            )}
           </div>
 
           {/* Batch Progress Bar */}
@@ -817,10 +1011,11 @@ export function VideoComposer() {
             {completedVideos > 0 && (
               <button
                 onClick={handleDownloadAll}
-                className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-violet-900/20"
+                disabled={isDownloading}
+                className={`px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-violet-900/20 ${isDownloading ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
-                <Package className="w-4 h-4" />
-                下载全部 ({completedVideos})
+                {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                {isDownloading ? '打包中...' : `下载全部 (${completedVideos})`}
               </button>
             )}
             <button
@@ -848,7 +1043,7 @@ export function VideoComposer() {
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 z-10">
+        <div className="flex-1 overflow-y-auto p-6 z-10 will-change-scroll-position">
           {folderGroups.length === 0 ? (
             /* Empty State */
             <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 m-4">
@@ -939,15 +1134,20 @@ export function VideoComposer() {
                           <button
                             onClick={(e) => { e.stopPropagation(); handleDownloadVideo(group); }}
                             className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-violet-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
-                            title="下载视频"
+                            title="下载视频 (.webm)"
                           >
                             <Download className="w-4 h-4" />
                           </button>
                         )}
 
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5">
-                          <Folder className="w-4 h-4 text-violet-400 flex-shrink-0" />
-                          <span className="text-white text-xs font-medium truncate drop-shadow-lg">{group.name}</span>
+                        <div className="absolute bottom-2 left-2 right-2 flex flex-col gap-0">
+                          <div className="flex items-center gap-1.5">
+                            <Folder className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                            <span className="text-white text-xs font-medium truncate drop-shadow-lg">{group.name}</span>
+                          </div>
+                          {group.path && group.path.includes('/') && (
+                            <span className="text-gray-400 text-[9px] truncate drop-shadow-lg ml-5">{group.path}</span>
+                          )}
                         </div>
                       </button>
 
@@ -972,15 +1172,28 @@ export function VideoComposer() {
                     <div className="flex items-center gap-2">
                       <FolderOpen className="w-4 h-4 text-violet-400" />
                       <span className="text-sm font-medium text-gray-300">{selectedFolder.name}</span>
+                      {selectedFolder.path && selectedFolder.path.includes('/') && (
+                        <span className="text-xs text-gray-500">({selectedFolder.path})</span>
+                      )}
                       <span className="text-xs text-gray-500">({selectedFolder.images.length} 张图片)</span>
                     </div>
                     {selectedFolder.isCompleted && selectedFolder.videoBlob && (
-                      <button
-                        onClick={() => handleDownloadFolder(selectedFolder)}
-                        className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2"
-                      >
-                        <Download className="w-4 h-4" /> 下载 (图片+视频)
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDownloadVideo(selectedFolder)}
+                          className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors flex items-center gap-2"
+                        >
+                          <Download className="w-4 h-4" /> 下载视频
+                        </button>
+                        <button
+                          onClick={() => handleDownloadFolder(selectedFolder)}
+                          disabled={isDownloading}
+                          className={`px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-2 ${isDownloading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                          {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                          {isDownloading ? '打包中...' : '下载 (图片+视频 ZIP)'}
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1030,7 +1243,7 @@ export function VideoComposer() {
                   {/* Image Thumbnails */}
                   <div className="space-y-2">
                     <div className="text-xs text-gray-500 mb-2">图片列表:</div>
-                    <div className="flex gap-2 overflow-x-auto pb-2">
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
                       {selectedFolder.images.map((img, index) => (
                         <div
                           key={img.id}

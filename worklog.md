@@ -92,3 +92,30 @@ Stage Summary:
 - 取消生成后可正常查看/下载已完成的视频
 - 下载 ZIP 结构：子文件夹/图片+视频.webm
 - 项目改为静态导出，打包后无需 node.exe
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: 修复4个问题：1)视频下载不工作 2)背景音乐不能用 3)文件夹结构丢失 4)UI滚动卡顿
+
+Work Log:
+- 分析VideoComposer.tsx下载逻辑，发现a.click()在异步操作后被浏览器阻止
+- 修复单个视频下载：直接下载.webm文件（同步操作，不经过ZIP）
+- 修复ZIP下载：添加isDownloading状态、alert错误提示、延迟revokeObjectURL
+- 新增背景音乐功能：BGM上传、试听预览、音量调节、删除
+- 在types.ts添加audioFile和audioVolume到VideoSettings
+- 在videoService.ts实现音频编码：AudioContext解码 → OfflineAudioContext重采样+音量 → AudioEncoder Opus编码 → webm-muxer混入
+- 快速路径(VideoEncoder)：muxer添加A_OPUS音频轨道，编码后添加音频chunk
+- 兼容路径(MediaRecorder)：Web Audio API混音到canvas stream
+- 修复文件夹结构：ZIP下载使用完整relativePath，保留子文件夹层级
+- 文件夹卡片显示完整路径作为副标题
+- 优化UI滚动：添加smooth scrolling、紫色主题滚动条CSS、overscroll-behavior: contain
+- 版本号升级到1.5.0
+- 构建验证通过，零错误
+
+Stage Summary:
+- 视频下载功能修复：单视频直接下载.webm，批量下载ZIP带loading和错误提示
+- 背景音乐完整实现：上传mp3/wav/ogg/m4a、试听、音量调节、自动循环、Opus编码混入视频
+- 文件夹结构保留：ZIP中保持完整的子文件夹层级路径
+- UI滚动优化：平滑滚动、紫色滚动条、滚动性能优化
+- 版本升级到1.5.0
