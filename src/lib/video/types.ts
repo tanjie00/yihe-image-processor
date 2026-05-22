@@ -15,8 +15,10 @@ export interface BgmTrack {
   name: string;
   artist: string;
   duration: number; // 秒
-  url: string;
+  url?: string;
   category: string;
+  /** 内置生成标记（无需 URL） */
+  isBuiltIn?: boolean;
 }
 
 /** 视频生成设置 */

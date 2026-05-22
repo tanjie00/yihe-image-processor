@@ -209,3 +209,38 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:active {
   background: rgba(139, 92, 246, 0.7);
 }
+
+/* ===== Scroll Performance Optimizations ===== */
+.scroll-container {
+  will-change: transform;
+  contain: layout style;
+  overscroll-behavior: contain;
+  overflow: clip;
+  overflow-y: auto;
+}
+
+.scroll-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* Image card optimization — reduce layout thrashing */
+.image-card {
+  contain: layout style paint;
+  will-change: transform;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 200px;
+}
+
+/* List item optimization — reduce re-renders for off-screen items */
+.list-item-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 80px;
+  contain: layout style paint;
+}
+
+/* Folder group card optimization */
+.folder-group-card {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 120px;
+  contain: layout style;
+}

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, screen, shell, Menu } = require('electron');
+const { app, BrowserWindow, screen, shell, Menu, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -7,8 +7,10 @@ const fs = require('fs');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-// 限制渲染进程内存，避免 OOM
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
+// 更多 GPU 优化标志，提升滚动流畅度
+app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,RawDraw');
+// 限制渲染进程内存，避免 OOM（适当提高以支持大文件处理）
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=768');
 
 let splashWindow = null;
 let mainWindow = null;
@@ -148,6 +150,7 @@ function createMainWindow(serverUrl) {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -190,8 +193,48 @@ function createMainWindow(serverUrl) {
   });
 }
 
+// ==================== IPC Handlers ====================
+
+// Handle save-file IPC: shows save dialog and writes file to disk
+ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
+  try {
+    const { canceled, filePath: savePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: fileName,
+      filters: [
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+
+    if (canceled || !savePath) {
+      throw new Error('cancelled');
+    }
+
+    await fs.promises.writeFile(savePath, Buffer.from(buffer));
+    return { success: true, path: savePath };
+  } catch (err) {
+    if (err.message === 'cancelled' || err.message?.includes('取消')) {
+      throw new Error('cancelled');
+    }
+    throw err;
+  }
+});
+
 // App lifecycle
 app.whenReady().then(async () => {
+  // Handle will-download events from the session
+  session.defaultSession.on('will-download', (event, item, webContents) => {
+    // Allow the download to proceed - set save path via dialog
+    const fileName = item.getFilename();
+    const savePath = dialog.showSaveDialogSync(mainWindow, {
+      defaultPath: fileName,
+    });
+    if (savePath) {
+      item.setSavePath(savePath);
+    } else {
+      item.cancel();
+    }
+  });
+
   createSplashWindow();
 
   try {

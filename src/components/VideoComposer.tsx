@@ -7,7 +7,7 @@ import {
   Sparkles, Clock, Ratio, Layers, Folder, ChevronDown,
   ChevronRight, Check, Settings2, Zap, Eye, Package,
   CheckSquare, Square, AlertCircle, Cpu, Music, Volume2,
-  VolumeX, Search
+  VolumeX, Search, Globe, ExternalLink, Settings
 } from 'lucide-react';
 import {
   generateVideo,
@@ -48,6 +48,16 @@ interface FolderGroup {
   progress?: VideoProgress;
   isCompleted: boolean;
   error?: string;
+}
+
+// 文件夹树节点（用于层级导航）
+interface VideoFolderNode {
+  name: string;
+  fullPath: string;
+  imageCount: number;
+  directImageCount: number;
+  children: VideoFolderNode[];
+  images: ImageItem[]; // 直接属于此文件夹的图片（不含子文件夹的）
 }
 
 // 动态并发数：限制为2，避免占用过多系统资源导致卡顿
@@ -105,6 +115,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   const [allImages, setAllImages] = useState<ImageItem[]>([]);
   const [folderGroups, setFolderGroups] = useState<FolderGroup[]>([]);
   const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
+  const [videoCurrentFolderPath, setVideoCurrentFolderPath] = useState<string | null>(null);
   const [videoSettings, setVideoSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS);
   const [customWidth, setCustomWidth] = useState(DEFAULT_CUSTOM_WIDTH);
   const [customHeight, setCustomHeight] = useState(DEFAULT_CUSTOM_HEIGHT);
@@ -129,6 +140,9 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   };
   const isSectionCollapsed = (section: string) => collapsedSections.has(section);
 
+  // Download state
+  const [isDownloading, setIsDownloading] = useState(false);
+
   // BGM state
   const [selectedBgmId, setSelectedBgmId] = useState<string | null>(null);
   const [bgmVolume, setBgmVolume] = useState(0.5);
@@ -139,6 +153,16 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   const [customBgmFile, setCustomBgmFile] = useState<File | null>(null);
   const [isBgmPlaying, setIsBgmPlaying] = useState(false);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Pixabay online music state
+  const [bgmTab, setBgmTab] = useState<'builtin' | 'online'>('builtin');
+  const [pixabayQuery, setPixabayQuery] = useState('');
+  const [pixabayResults, setPixabayResults] = useState<any[]>([]);
+  const [pixabayLoading, setPixabayLoading] = useState(false);
+  const [pixabayApiKey, setPixabayApiKey] = useState('');
+  const [showPixabaySettings, setShowPixabaySettings] = useState(false);
+  const [pixabayPreviewId, setPixabayPreviewId] = useState<number | null>(null);
+  const pixabayPreviewRef = useRef<HTMLAudioElement | null>(null);
 
   // ==================== Helpers ====================
   const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -170,11 +194,37 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     return m > 0 ? `${m}分${s}秒` : `${s}秒`;
   };
 
-  // 获取视频文件名（含扩展名）
+  // 获取视频文件名（含扩展名），使用完整路径确保唯一性
   const getVideoFileName = (group: FolderGroup) => {
     const ext = getOutputExtension();
-    return `${group.name}_video.${ext}`;
+    // Use full path for unique filename, replace path separators with underscores
+    const safeName = group.path ? group.path.replace(/[\/\\]/g, '_') : group.name;
+    return `${safeName}_video.${ext}`;
   };
+
+  // 统一下载 Blob 的辅助函数：Electron 环境使用 IPC 保存，浏览器环境使用 <a> 元素
+  const downloadBlob = useCallback(async (blob: Blob, fileName: string) => {
+    // Electron environment: use IPC to save file
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.isElectron?.()) {
+      try {
+        const arrayBuffer = await blob.arrayBuffer();
+        await (window as any).electronAPI.saveFile(arrayBuffer, fileName, blob.type);
+        return;
+      } catch (err: any) {
+        if (err.message?.includes('cancelled') || err.message?.includes('取消')) return;
+        console.warn('Electron save failed, falling back to browser download:', err);
+      }
+    }
+    // Browser fallback: create <a> element
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, []);
 
   // ==================== BGM Handling ====================
 
@@ -293,12 +343,119 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     setIsBgmPlaying(false);
   }, []);
 
+  // Initialize Pixabay API key from localStorage
+  useEffect(() => {
+    const savedKey = localStorage.getItem('pixabay_api_key');
+    if (savedKey) setPixabayApiKey(savedKey);
+  }, []);
+
+  // Search Pixabay music
+  const searchPixabayMusic = useCallback(async () => {
+    if (!pixabayApiKey) {
+      alert('请先设置 Pixabay API Key');
+      setShowPixabaySettings(true);
+      return;
+    }
+    setPixabayLoading(true);
+    try {
+      const response = await fetch(`/api/pixabay-music?q=${encodeURIComponent(pixabayQuery || 'background music')}&per_page=50`);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || '搜索失败');
+      }
+      const data = await response.json();
+      if (data.hits) {
+        setPixabayResults(data.hits.filter((h: any) => h.audio || h.type === 'music'));
+      } else {
+        setPixabayResults([]);
+      }
+    } catch (err: any) {
+      console.error('Pixabay search failed:', err);
+      alert(`搜索失败: ${err.message}`);
+      setPixabayResults([]);
+    } finally {
+      setPixabayLoading(false);
+    }
+  }, [pixabayApiKey, pixabayQuery]);
+
+  // Select Pixabay track as BGM
+  const handleSelectPixabayTrack = useCallback(async (track: any) => {
+    stopBgmPreview();
+    setSelectedBgmId(`pixabay-${track.id}`);
+    setCustomBgmFile(null);
+    setBgmError(null);
+    setBgmLoading(true);
+
+    try {
+      const audioUrl = track.audio;
+      if (!audioUrl) throw new Error('No audio URL available');
+
+      const proxyUrl = `/api/pixabay-download?url=${encodeURIComponent(audioUrl)}`;
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const file = new File([blob], `pixabay_${track.id}.mp3`, { type: 'audio/mpeg' });
+
+      const buffer = await decodeBgmAudio(file);
+      setBgmAudioBuffer(buffer);
+    } catch (err: any) {
+      setBgmError(`加载失败: ${err.message}`);
+      setBgmAudioBuffer(null);
+      setSelectedBgmId(null);
+    } finally {
+      setBgmLoading(false);
+    }
+  }, [stopBgmPreview, decodeBgmAudio]);
+
+  // Play preview of a Pixabay track
+  const playPixabayPreview = useCallback((track: any) => {
+    // Stop any existing preview
+    if (pixabayPreviewRef.current) {
+      pixabayPreviewRef.current.pause();
+      pixabayPreviewRef.current = null;
+    }
+    setPixabayPreviewId(null);
+
+    if (!track.audio) return;
+
+    const audio = new Audio(track.audio);
+    audio.volume = bgmVolume;
+    audio.play().catch(() => {});
+    pixabayPreviewRef.current = audio;
+    setPixabayPreviewId(track.id);
+
+    audio.addEventListener('ended', () => {
+      setPixabayPreviewId(null);
+      pixabayPreviewRef.current = null;
+    });
+  }, [bgmVolume]);
+
+  const stopPixabayPreview = useCallback(() => {
+    if (pixabayPreviewRef.current) {
+      pixabayPreviewRef.current.pause();
+      pixabayPreviewRef.current = null;
+    }
+    setPixabayPreviewId(null);
+  }, []);
+
+  // Save Pixabay API key
+  const savePixabayApiKey = () => {
+    if (pixabayApiKey.trim()) {
+      localStorage.setItem('pixabay_api_key', pixabayApiKey.trim());
+      setShowPixabaySettings(false);
+    }
+  };
+
   // Clean up audio on unmount
   useEffect(() => {
     return () => {
       if (bgmAudioRef.current) {
         bgmAudioRef.current.pause();
         bgmAudioRef.current = null;
+      }
+      if (pixabayPreviewRef.current) {
+        pixabayPreviewRef.current.pause();
+        pixabayPreviewRef.current = null;
       }
     };
   }, []);
@@ -526,6 +683,90 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     return folderGroups.find(g => g.path === selectedFolderPath) || null;
   }, [folderGroups, selectedFolderPath]);
 
+  // ==================== Folder Tree Navigation ====================
+
+  // Build folder tree from allImages for hierarchical navigation
+  const folderTree = useMemo(() => {
+    const root: VideoFolderNode = { name: '根目录', fullPath: '', imageCount: 0, directImageCount: 0, children: [], images: [] };
+    const nodeMap = new Map<string, VideoFolderNode>();
+    nodeMap.set('', root);
+
+    for (const img of allImages) {
+      const path = img.relativePath || '';
+      if (!path) {
+        root.images.push(img);
+        root.directImageCount++;
+        root.imageCount++;
+        continue;
+      }
+
+      const parts = path.split('/');
+      let currentPath = '';
+      for (let i = 0; i < parts.length; i++) {
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+
+        if (!nodeMap.has(currentPath)) {
+          const node: VideoFolderNode = {
+            name: parts[i],
+            fullPath: currentPath,
+            imageCount: 0,
+            directImageCount: 0,
+            children: [],
+            images: [],
+          };
+          nodeMap.set(currentPath, node);
+          const parent = nodeMap.get(parentPath);
+          if (parent) parent.children.push(node);
+        }
+
+        const node = nodeMap.get(currentPath)!;
+        node.imageCount++;
+        if (i === parts.length - 1) {
+          node.directImageCount++;
+          node.images.push(img);
+        }
+      }
+    }
+
+    return root;
+  }, [allImages]);
+
+  // Current folder node based on navigation
+  const currentVideoFolderNode = useMemo(() => {
+    if (!videoCurrentFolderPath) return folderTree;
+    const parts = videoCurrentFolderPath.split('/');
+    let current = folderTree;
+    for (const part of parts) {
+      const child = current.children.find(c => c.name === part);
+      if (!child) return folderTree;
+      current = child;
+    }
+    return current;
+  }, [videoCurrentFolderPath, folderTree]);
+
+  // Breadcrumb path segments
+  const videoBreadcrumbSegments = useMemo(() => {
+    if (!videoCurrentFolderPath) return [];
+    return videoCurrentFolderPath.split('/').map((name, idx, arr) => ({
+      name,
+      fullPath: arr.slice(0, idx + 1).join('/'),
+    }));
+  }, [videoCurrentFolderPath]);
+
+  // Leaf folder groups visible in the current navigation context
+  const visibleFolderGroups = useMemo(() => {
+    // Show folder groups that match the current navigation context
+    if (!videoCurrentFolderPath) {
+      // At root: show all groups (no filter needed)
+      return folderGroups;
+    }
+    // Show groups whose path starts with current folder path
+    return folderGroups.filter(g =>
+      g.path === videoCurrentFolderPath || g.path.startsWith(videoCurrentFolderPath + '/')
+    );
+  }, [folderGroups, videoCurrentFolderPath]);
+
   // ==================== Video Generation (Concurrent Pool with Pause/Resume) ====================
 
   const handleBatchGenerate = async () => {
@@ -660,9 +901,23 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
 
   // ==================== Download ====================
 
-  const handleDownloadVideo = (group: FolderGroup) => {
-    if (!group.videoBlob || !group.videoUrl) return;
-    handleDownloadFolder(group);
+  /**
+   * 直接下载视频文件（不打包 ZIP）
+   */
+  const handleDownloadVideoOnly = async (group: FolderGroup) => {
+    if (!group.videoBlob) {
+      alert('视频文件不存在，请先生成视频');
+      return;
+    }
+    await downloadBlob(group.videoBlob, getVideoFileName(group));
+  };
+
+  const handleDownloadVideo = async (group: FolderGroup) => {
+    if (!group.videoBlob || !group.videoUrl) {
+      alert('视频文件不存在，请先生成视频');
+      return;
+    }
+    await handleDownloadVideoOnly(group);
   };
 
   /**
@@ -670,8 +925,12 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
    * ZIP 结构保持原始子文件夹路径，视频文件放在与图片同一目录下
    */
   const handleDownloadFolder = async (group: FolderGroup) => {
-    if (!group.videoBlob) return;
+    if (!group.videoBlob) {
+      alert('视频文件不存在，请先生成视频');
+      return;
+    }
 
+    setIsDownloading(true);
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
@@ -692,16 +951,12 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       zip.file(`${folderPath}/${videoFileName}`, group.videoBlob);
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${group.name}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('ZIP failed', err);
+      await downloadBlob(blob, `${group.name}.zip`);
+    } catch (err: any) {
+      console.error('ZIP 下载失败:', err);
+      alert(`下载失败: ${err.message || '未知错误'}`);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -711,12 +966,16 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
    */
   const handleDownloadAll = async () => {
     const completedGroups = folderGroups.filter(g => g.isCompleted && g.videoBlob);
-    if (completedGroups.length === 0) return;
+    if (completedGroups.length === 0) {
+      alert('没有已完成的视频可下载');
+      return;
+    }
     if (completedGroups.length === 1) {
       handleDownloadFolder(completedGroups[0]);
       return;
     }
 
+    setIsDownloading(true);
     try {
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
@@ -738,16 +997,12 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       }
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'videos_batch.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('ZIP failed', err);
+      await downloadBlob(blob, 'videos_batch.zip');
+    } catch (err: any) {
+      console.error('批量 ZIP 下载失败:', err);
+      alert(`下载失败: ${err.message || '未知错误'}`);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -822,7 +1077,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         </div>
 
         {/* Scrollable Sections */}
-        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scroll-container">
 
         {/* Video Ratio - Collapsible */}
         <div className="border border-gray-700/50 rounded-xl overflow-hidden">
@@ -1033,7 +1288,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
             </label>
             <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ${isSectionCollapsed('music') ? '' : 'rotate-180'}`} />
           </button>
-          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('music') ? 'max-h-0' : 'max-h-[800px]'} overflow-y-auto scrollbar-thin`}>
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('music') ? 'max-h-0' : 'max-h-[800px]'} overflow-y-auto scrollbar-thin scroll-container`}>
             <div className="px-3 pb-3 space-y-3">
               {/* Audio Support Notice */}
               {!supportsAudioEncoding && (
@@ -1043,24 +1298,33 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 </div>
               )}
 
-              {/* Search */}
-              <div className="flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-pink-500/50 transition-colors">
-                <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                <input
-                  type="text"
-                  value={bgmSearchQuery}
-                  onChange={e => setBgmSearchQuery(e.target.value)}
-                  placeholder="搜索音乐..."
-                  className="w-full bg-transparent text-xs text-white py-2 px-2 outline-none placeholder-gray-600"
-                />
-                {bgmSearchQuery && (
-                  <button onClick={() => setBgmSearchQuery('')} className="text-gray-500 hover:text-white">
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
+              {/* BGM Tab Switcher */}
+              <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                <button
+                  onClick={() => setBgmTab('builtin')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    bgmTab === 'builtin'
+                      ? 'bg-pink-600/30 text-pink-300 border border-pink-500/30'
+                      : 'text-gray-500 hover:text-gray-300 border border-transparent'
+                  }`}
+                >
+                  <Music className="w-3 h-3" />
+                  内置音乐
+                </button>
+                <button
+                  onClick={() => setBgmTab('online')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    bgmTab === 'online'
+                      ? 'bg-pink-600/30 text-pink-300 border border-pink-500/30'
+                      : 'text-gray-500 hover:text-gray-300 border border-transparent'
+                  }`}
+                >
+                  <Globe className="w-3 h-3" />
+                  在线音乐
+                </button>
               </div>
 
-              {/* Custom Upload */}
+              {/* Custom Upload + Clear (shared) */}
               <div className="flex items-center gap-2">
                 <label className="flex-1 cursor-pointer px-3 py-2 text-xs bg-gray-800 hover:bg-gray-750 text-gray-300 rounded-lg border border-gray-700 hover:border-pink-500/30 transition-all flex items-center gap-1.5 justify-center">
                   <Upload className="w-3.5 h-3.5" />
@@ -1106,12 +1370,15 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-medium text-white truncate">
-                        {customBgmFile ? customBgmFile.name : getTrackById(selectedBgmId)?.name || '未知'}
+                        {customBgmFile ? customBgmFile.name : selectedBgmId.startsWith('pixabay-') ? `Pixabay #${selectedBgmId.replace('pixabay-', '')}` : getTrackById(selectedBgmId)?.name || '未知'}
                       </div>
-                      {!customBgmFile && getTrackById(selectedBgmId) && (
+                      {!customBgmFile && !selectedBgmId.startsWith('pixabay-') && getTrackById(selectedBgmId) && (
                         <div className="text-[10px] text-gray-500">
                           {getTrackById(selectedBgmId)!.artist} · {formatTrackDuration(getTrackById(selectedBgmId)!.duration)}
                         </div>
+                      )}
+                      {selectedBgmId.startsWith('pixabay-') && (
+                        <div className="text-[10px] text-gray-500">Pixabay 在线音乐</div>
                       )}
                     </div>
                     <button
@@ -1142,39 +1409,185 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 </div>
               )}
 
-              {/* Music Library */}
-              <div className="space-y-2.5 max-h-60 overflow-y-auto scrollbar-thin pr-1">
-                {filteredCategories.map(category => (
-                  <div key={category.name}>
-                    <div className="text-xs text-gray-500 font-medium flex items-center gap-1 mb-1.5">
-                      <span>{category.icon}</span>
-                      {category.name}
-                    </div>
-                    <div className="space-y-1">
-                      {category.tracks.map(track => (
-                        <button
-                          key={track.id}
-                          onClick={() => handleSelectBgm(track)}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left ${
-                            selectedBgmId === track.id
-                              ? 'bg-pink-900/40 border border-pink-500/50 text-white'
-                              : 'bg-gray-800/50 border border-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-300'
-                          }`}
-                        >
-                          <Music className={`w-3 h-3 flex-shrink-0 ${selectedBgmId === track.id ? 'text-pink-400' : 'text-gray-600'}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="truncate">{track.name}</div>
-                          </div>
-                          <span className="text-[10px] text-gray-600 flex-shrink-0">{formatTrackDuration(track.duration)}</span>
-                        </button>
-                      ))}
-                    </div>
+              {/* Tab Content: Built-in Music */}
+              {bgmTab === 'builtin' && (
+                <>
+                  {/* Search */}
+                  <div className="flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-pink-500/50 transition-colors">
+                    <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={bgmSearchQuery}
+                      onChange={e => setBgmSearchQuery(e.target.value)}
+                      placeholder="搜索音乐..."
+                      className="w-full bg-transparent text-xs text-white py-2 px-2 outline-none placeholder-gray-600"
+                    />
+                    {bgmSearchQuery && (
+                      <button onClick={() => setBgmSearchQuery('')} className="text-gray-500 hover:text-white">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
-                ))}
-                {filteredCategories.length === 0 && (
-                  <div className="text-center text-xs text-gray-600 py-4">没有找到匹配的音乐</div>
-                )}
-              </div>
+
+                  {/* Music Library */}
+                  <div className="space-y-2.5 max-h-60 overflow-y-auto scrollbar-thin pr-1 scroll-container">
+                    {filteredCategories.map(category => (
+                      <div key={category.name}>
+                        <div className="text-xs text-gray-500 font-medium flex items-center gap-1 mb-1.5">
+                          <span>{category.icon}</span>
+                          {category.name}
+                        </div>
+                        <div className="space-y-1">
+                          {category.tracks.map(track => (
+                            <button
+                              key={track.id}
+                              onClick={() => handleSelectBgm(track)}
+                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all text-left ${
+                                selectedBgmId === track.id
+                                  ? 'bg-pink-900/40 border border-pink-500/50 text-white'
+                                  : 'bg-gray-800/50 border border-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-300'
+                              }`}
+                            >
+                              <Music className={`w-3 h-3 flex-shrink-0 ${selectedBgmId === track.id ? 'text-pink-400' : 'text-gray-600'}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="truncate">{track.name}</div>
+                              </div>
+                              <span className="text-[10px] text-gray-600 flex-shrink-0">{formatTrackDuration(track.duration)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {filteredCategories.length === 0 && (
+                      <div className="text-center text-xs text-gray-600 py-4">没有找到匹配的音乐</div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Tab Content: Online Music (Pixabay) */}
+              {bgmTab === 'online' && (
+                <>
+                  {/* API Key Settings */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <Settings className="w-3 h-3" />
+                        <span>Pixabay API Key</span>
+                        {pixabayApiKey && !showPixabaySettings && (
+                          <span className="text-[10px] text-emerald-400">已配置</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setShowPixabaySettings(!showPixabaySettings)}
+                        className="text-[10px] text-pink-400 hover:text-pink-300"
+                      >
+                        {showPixabaySettings ? '收起' : '设置'}
+                      </button>
+                    </div>
+                    {showPixabaySettings && (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="password"
+                          value={pixabayApiKey}
+                          onChange={e => setPixabayApiKey(e.target.value)}
+                          placeholder="输入 Pixabay API Key"
+                          className="flex-1 bg-gray-900 text-xs text-white py-1.5 px-2 rounded-lg border border-gray-700 focus:border-pink-500/50 outline-none placeholder-gray-600"
+                        />
+                        <button
+                          onClick={savePixabayApiKey}
+                          className="px-2 py-1.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 text-pink-300 rounded-lg border border-pink-500/30 transition-colors"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    )}
+                    {!pixabayApiKey && (
+                      <div className="text-[10px] text-gray-500">
+                        免费申请：{' '}
+                        <a
+                          href="https://pixabay.com/api/docs/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-pink-400 hover:text-pink-300 underline inline-flex items-center gap-0.5"
+                        >
+                          pixabay.com/api/docs <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-pink-500/50 transition-colors">
+                      <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                      <input
+                        type="text"
+                        value={pixabayQuery}
+                        onChange={e => setPixabayQuery(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') searchPixabayMusic(); }}
+                        placeholder="搜索在线音乐..."
+                        className="w-full bg-transparent text-xs text-white py-2 px-2 outline-none placeholder-gray-600"
+                      />
+                    </div>
+                    <button
+                      onClick={searchPixabayMusic}
+                      disabled={pixabayLoading}
+                      className="px-3 py-2 text-xs bg-pink-600/30 hover:bg-pink-600/50 text-pink-300 rounded-lg border border-pink-500/30 transition-colors disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {pixabayLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                      搜索
+                    </button>
+                  </div>
+
+                  {/* Results */}
+                  <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin pr-1 scroll-container">
+                    {pixabayLoading && (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="w-5 h-5 animate-spin text-pink-400" />
+                      </div>
+                    )}
+                    {!pixabayLoading && pixabayResults.length === 0 && pixabayApiKey && (
+                      <div className="text-center text-xs text-gray-600 py-4">
+                        输入关键词搜索免费无版权音乐
+                      </div>
+                    )}
+                    {!pixabayLoading && pixabayResults.map((track) => (
+                      <div
+                        key={track.id}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all ${
+                          selectedBgmId === `pixabay-${track.id}`
+                            ? 'bg-pink-900/40 border border-pink-500/50 text-white'
+                            : 'bg-gray-800/50 border border-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-300'
+                        }`}
+                      >
+                        <Globe className={`w-3 h-3 flex-shrink-0 ${selectedBgmId === `pixabay-${track.id}` ? 'text-pink-400' : 'text-gray-600'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate">{track.tags || track.name || `Track #${track.id}`}</div>
+                          <div className="text-[10px] text-gray-600 truncate">{track.user || 'Unknown'}</div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => pixabayPreviewId === track.id ? stopPixabayPreview() : playPixabayPreview(track)}
+                            className="w-6 h-6 rounded-full bg-gray-700/50 hover:bg-pink-600/30 text-gray-400 hover:text-pink-300 flex items-center justify-center transition-colors"
+                            title="预览"
+                          >
+                            {pixabayPreviewId === track.id ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5 fill-current" />}
+                          </button>
+                          <button
+                            onClick={() => handleSelectPixabayTrack(track)}
+                            disabled={bgmLoading}
+                            className="w-6 h-6 rounded-full bg-gray-700/50 hover:bg-pink-600/30 text-gray-400 hover:text-pink-300 flex items-center justify-center transition-colors disabled:opacity-50"
+                            title="选择"
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1231,10 +1644,11 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
           {completedVideos > 0 && (
             <button
               onClick={handleDownloadAll}
-              className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2 transition-colors"
+              disabled={isDownloading}
+              className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Package className="w-4 h-4" />
-              下载全部视频 ({completedVideos})
+              {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+              {isDownloading ? '正在打包...' : `下载全部视频 (${completedVideos})`}
             </button>
           )}
         </div>
@@ -1290,11 +1704,12 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
               {completedVideos > 0 && (
                 <button
                   onClick={handleDownloadAll}
+                  disabled={isDownloading}
                   title="下载全部"
-                  className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-lg shadow-violet-900/20 whitespace-nowrap"
+                  className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors inline-flex items-center gap-1.5 shadow-lg shadow-violet-900/20 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Package className="w-4 h-4" />
-                  下载全部 ({completedVideos})
+                  {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+                  {isDownloading ? '打包中...' : `下载全部 (${completedVideos})`}
                 </button>
               )}
               <button
@@ -1353,7 +1768,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         </header>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 z-10 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto p-6 z-10 scrollbar-thin scroll-container">
           {folderGroups.length === 0 ? (
             /* Empty State */
             <div className="h-full flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 m-4">
@@ -1382,113 +1797,198 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
             </div>
           ) : (
             <>
-              {/* Folder Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
-                {folderGroups.map((group) => {
-                  const hasVideo = group.isCompleted && group.videoUrl;
-                  return (
-                    <div
-                      key={group.path}
-                      className={`group flex flex-col rounded-xl overflow-hidden transition-all ${
-                        selectedFolderPath === group.path
-                          ? 'bg-gray-800 border-2 border-violet-500 shadow-lg shadow-violet-900/20'
-                          : 'bg-gray-800/80 border border-gray-700/60 hover:border-violet-500/50'
-                      }`}
-                    >
-                      {/* Folder Preview */}
+              {/* Breadcrumb Navigation */}
+              {folderTree.children.length > 0 && (
+                <div className="flex items-center gap-1.5 mb-4 text-xs flex-wrap">
+                  <button
+                    onClick={() => setVideoCurrentFolderPath(null)}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                      !videoCurrentFolderPath
+                        ? 'bg-violet-600/30 text-violet-300 font-medium'
+                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                    }`}
+                  >
+                    <Folder className="w-3.5 h-3.5" />
+                    根目录
+                  </button>
+                  {videoBreadcrumbSegments.map((seg, idx) => (
+                    <React.Fragment key={seg.fullPath}>
+                      <ChevronRight className="w-3 h-3 text-gray-600" />
                       <button
-                        onClick={() => setSelectedFolderPath(selectedFolderPath === group.path ? null : group.path)}
-                        className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden relative w-full cursor-pointer"
+                        onClick={() => setVideoCurrentFolderPath(seg.fullPath)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors ${
+                          idx === videoBreadcrumbSegments.length - 1
+                            ? 'bg-violet-600/30 text-violet-300 font-medium'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800'
+                        }`}
                       >
-                        {group.images.length > 0 ? (
-                          <img
-                            src={group.images[0].url}
-                            className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
-                            alt={group.name}
-                          />
-                        ) : (
-                          <Folder className="w-12 h-12 text-gray-600" />
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+                        <Folder className="w-3 h-3" />
+                        {seg.name}
+                      </button>
+                    </React.Fragment>
+                  ))}
+                  <span className="text-gray-600 ml-2">({currentVideoFolderNode.imageCount} 张图片)</span>
+                </div>
+              )}
 
-                        {/* Video status badge */}
-                        {group.isGenerating && !isPaused && (
-                          <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
-                            <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                            {group.progress && (
-                              <span className="text-white text-[10px] font-medium">{group.progress.percent}%</span>
+              {/* Subfolder Navigation Cards */}
+              {currentVideoFolderNode.children.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">
+                  {currentVideoFolderNode.children
+                    .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+                    .map((child) => {
+                      // Check if this child folder has any completed videos
+                      const childGroups = folderGroups.filter(g =>
+                        g.path === child.fullPath || g.path.startsWith(child.fullPath + '/')
+                      );
+                      const completedCount = childGroups.filter(g => g.isCompleted).length;
+                      const totalCount = childGroups.length;
+
+                      return (
+                        <button
+                          key={child.fullPath}
+                          onClick={() => setVideoCurrentFolderPath(child.fullPath)}
+                          className="group flex flex-col items-center justify-center p-4 rounded-xl bg-gray-800/60 border border-gray-700/50 hover:border-violet-500/50 hover:bg-gray-800 transition-all cursor-pointer image-card"
+                        >
+                          <Folder className="w-8 h-8 text-violet-400 mb-2 group-hover:scale-110 transition-transform" />
+                          <div className="text-xs font-medium text-gray-300 truncate w-full text-center">{child.name}</div>
+                          <div className="text-[10px] text-gray-500 mt-0.5">{child.imageCount} 张图片</div>
+                          {totalCount > 0 && (
+                            <div className="text-[10px] mt-1">
+                              {completedCount === totalCount ? (
+                                <span className="text-green-400">✓ 全部完成</span>
+                              ) : (
+                                <span className="text-amber-400">{completedCount}/{totalCount} 完成</span>
+                              )}
+                            </div>
+                          )}
+                          {child.children.length > 0 && (
+                            <div className="text-[10px] text-gray-600 mt-0.5">{child.children.length} 个子文件夹</div>
+                          )}
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Leaf Folder Groups (video generation targets) */}
+              {visibleFolderGroups.length > 0 && (
+                <>
+                  {currentVideoFolderNode.children.length > 0 && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="h-px flex-1 bg-gray-800"></div>
+                      <span className="text-xs text-gray-600">视频合成目标</span>
+                      <div className="h-px flex-1 bg-gray-800"></div>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
+                    {visibleFolderGroups.map((group) => {
+                      const hasVideo = group.isCompleted && group.videoUrl;
+                      return (
+                        <div
+                          key={group.path}
+                          className={`group flex flex-col rounded-xl overflow-hidden transition-all image-card ${
+                            selectedFolderPath === group.path
+                              ? 'bg-gray-800 border-2 border-violet-500 shadow-lg shadow-violet-900/20'
+                              : 'bg-gray-800/80 border border-gray-700/60 hover:border-violet-500/50'
+                          }`}
+                        >
+                          {/* Folder Preview */}
+                          <button
+                            onClick={() => setSelectedFolderPath(selectedFolderPath === group.path ? null : group.path)}
+                            className="aspect-square bg-gray-900 flex items-center justify-center overflow-hidden relative w-full cursor-pointer"
+                          >
+                            {group.images.length > 0 ? (
+                              <img
+                                src={group.images[0].url}
+                                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
+                                alt={group.name}
+                              />
+                            ) : (
+                              <Folder className="w-12 h-12 text-gray-600" />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-transparent to-transparent" />
+
+                            {/* Video status badge */}
+                            {group.isGenerating && !isPaused && (
+                              <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                                <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                                {group.progress && (
+                                  <span className="text-white text-[10px] font-medium">{group.progress.percent}%</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 暂停状态 */}
+                            {group.isGenerating && isPaused && (
+                              <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                                <Pause className="w-8 h-8 text-amber-400 mb-1" />
+                                <span className="text-amber-300 text-[10px] font-medium">已暂停</span>
+                              </div>
+                            )}
+
+                            {hasVideo && (
+                              <div className="absolute top-2 left-2 bg-green-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" />
+                                MP4
+                              </div>
+                            )}
+
+                            {group.error && (
+                              <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10">
+                                失败
+                              </div>
+                            )}
+
+                            {group.images.length < 2 && (
+                              <div className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10">
+                                不足2张
+                              </div>
+                            )}
+
+                            {/* Download button overlay */}
+                            {hasVideo && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDownloadVideoOnly(group); }}
+                                className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-emerald-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
+                                title="下载视频文件"
+                              >
+                                {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                              </button>
+                            )}
+
+                            {/* View video button overlay */}
+                            {hasVideo && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setSelectedFolderPath(group.path); }}
+                                className="absolute bottom-8 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
+                                title="预览视频"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
+
+                            <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5">
+                              <Folder className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                              <span className="text-white text-xs font-medium truncate drop-shadow-lg">{group.name}</span>
+                            </div>
+                          </button>
+
+                          {/* Folder Info */}
+                          <div className="p-2.5 flex items-center justify-between">
+                            <span className="text-xs text-gray-400 truncate">
+                              {group.images.length} 张图片
+                            </span>
+                            {hasVideo && group.videoBlob && (
+                              <span className="text-[10px] text-green-400">{formatBytes(group.videoBlob.size)}</span>
                             )}
                           </div>
-                        )}
-
-                        {/* 暂停状态 */}
-                        {group.isGenerating && isPaused && (
-                          <div className="absolute inset-0 bg-gray-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
-                            <Pause className="w-8 h-8 text-amber-400 mb-1" />
-                            <span className="text-amber-300 text-[10px] font-medium">已暂停</span>
-                          </div>
-                        )}
-
-                        {hasVideo && (
-                          <div className="absolute top-2 left-2 bg-green-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10 flex items-center gap-1">
-                            <Check className="w-2.5 h-2.5" />
-                            MP4
-                          </div>
-                        )}
-
-                        {group.error && (
-                          <div className="absolute top-2 left-2 bg-red-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10">
-                            失败
-                          </div>
-                        )}
-
-                        {group.images.length < 2 && (
-                          <div className="absolute top-2 left-2 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm z-10">
-                            不足2张
-                          </div>
-                        )}
-
-                        {/* Download button overlay */}
-                        {hasVideo && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDownloadVideo(group); }}
-                            className="absolute top-2 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-violet-600 text-green-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
-                            title="下载视频"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        {/* View video button overlay */}
-                        {hasVideo && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedFolderPath(group.path); }}
-                            className="absolute bottom-8 right-2 w-8 h-8 rounded-lg bg-black/50 hover:bg-fuchsia-600 text-fuchsia-400 hover:text-white flex items-center justify-center transition-all z-20 opacity-0 group-hover:opacity-100"
-                            title="预览视频"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        )}
-
-                        <div className="absolute bottom-2 left-2 right-2 flex items-center gap-1.5">
-                          <Folder className="w-4 h-4 text-violet-400 flex-shrink-0" />
-                          <span className="text-white text-xs font-medium truncate drop-shadow-lg">{group.name}</span>
                         </div>
-                      </button>
-
-                      {/* Folder Info */}
-                      <div className="p-2.5 flex items-center justify-between">
-                        <span className="text-xs text-gray-400 truncate">
-                          {group.images.length} 张图片
-                        </span>
-                        {hasVideo && group.videoBlob && (
-                          <span className="text-[10px] text-green-400">{formatBytes(group.videoBlob.size)}</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
 
               {/* Selected Folder Detail */}
               {selectedFolder && (
@@ -1505,24 +2005,17 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                     {selectedFolder.isCompleted && selectedFolder.videoBlob && (
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            // 单独下载视频文件
-                            const a = document.createElement('a');
-                            a.href = selectedFolder.videoUrl!;
-                            a.download = getVideoFileName(selectedFolder);
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                          }}
+                          onClick={() => handleDownloadVideoOnly(selectedFolder)}
                           className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-1.5"
                         >
                           <Video className="w-3.5 h-3.5" /> 仅下载视频
                         </button>
                         <button
                           onClick={() => handleDownloadFolder(selectedFolder)}
-                          className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-1.5"
+                          disabled={isDownloading}
+                          className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Package className="w-3.5 h-3.5" /> 下载 (图片+视频)
+                          {isDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />} 下载 (图片+视频)
                         </button>
                       </div>
                     )}

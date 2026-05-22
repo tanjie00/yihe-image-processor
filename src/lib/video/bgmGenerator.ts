@@ -1,8 +1,10 @@
 /**
- * 内置背景音乐生成器
+ * 内置背景音乐生成器 v3
  *
  * 使用 Web Audio API 程序化生成轻量级背景音乐，
  * 无需从外部下载音频文件，彻底解决 CORS 和网络不可用问题。
+ *
+ * v3: 扩展至 54 首内置曲目，每类 9 首
  *
  * 生成的音乐风格：柔和的环境音乐（ambient pad + 简单旋律）
  * 每首曲目约 30 秒，可循环播放
@@ -184,6 +186,22 @@ const C_MAJOR_CHORDS = [
   [392.00, 493.88, 587.33], // G
 ];
 
+/** G大调和弦进行: G - Em - C - D */
+const G_MAJOR_CHORDS = [
+  [196.00, 246.94, 293.66], // G
+  [164.81, 196.00, 246.94], // Em
+  [261.63, 329.63, 392.00], // C
+  [293.66, 369.99, 440.00], // D
+];
+
+/** D大调和弦进行: D - Bm - G - A */
+const D_MAJOR_CHORDS = [
+  [293.66, 369.99, 440.00], // D
+  [246.94, 293.66, 369.99], // Bm
+  [196.00, 246.94, 293.66], // G
+  [220.00, 277.18, 329.63], // A
+];
+
 /** 轻松愉快 - 明亮的C大调Pad + 轻快旋律 */
 async function generateHappy(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
   const chordDuration = durationSec / 4;
@@ -219,6 +237,38 @@ async function generateHappy(ctx: OfflineAudioContext, durationSec: number): Pro
   return ctx.startRendering();
 }
 
+/** 轻松愉快变体2 - G大调更明亮的旋律 */
+async function generateHappy2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, G_MAJOR_CHORDS[i], chordDuration + 0.5, i * chordDuration, 0.11);
+  }
+
+  // 更跳跃的旋律
+  const melodyNotes = [
+    { freq: 392.00, time: 0, dur: 0.4 },
+    { freq: 493.88, time: 0.5, dur: 0.4 },
+    { freq: 587.33, time: 1.0, dur: 0.6 },
+    { freq: 659.25, time: 1.7, dur: 0.4 },
+    { freq: 587.33, time: 2.2, dur: 0.4 },
+    { freq: 493.88, time: 2.7, dur: 0.6 },
+    { freq: 392.00, time: 3.4, dur: 0.8 },
+    { freq: 523.25, time: 5.0, dur: 0.4 },
+    { freq: 587.33, time: 5.5, dur: 0.4 },
+    { freq: 659.25, time: 6.0, dur: 0.6 },
+    { freq: 783.99, time: 6.7, dur: 0.4 },
+    { freq: 659.25, time: 7.2, dur: 0.4 },
+    { freq: 587.33, time: 7.7, dur: 0.6 },
+    { freq: 523.25, time: 8.4, dur: 0.8 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.07);
+
+  await generateBeat(ctx, 110, durationSec, 0, 0.04);
+
+  return ctx.startRendering();
+}
+
 /** 浪漫温馨 - 柔和的Am-Dm-G-C + 温暖旋律 */
 async function generateRomantic(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
   const chords = [
@@ -245,6 +295,34 @@ async function generateRomantic(ctx: OfflineAudioContext, durationSec: number): 
     { freq: 293.66, time: 8.2, dur: 1.0 },
   ];
   await generateMelody(ctx, melodyNotes, 0, 0.06);
+
+  return ctx.startRendering();
+}
+
+/** 浪漫温馨变体2 - F大调更柔和 */
+async function generateRomantic2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chords = [
+    [349.23, 440.00, 523.25], // F
+    [261.63, 329.63, 392.00], // C
+    [220.00, 261.63, 329.63], // Am
+    [392.00, 493.88, 587.33], // G
+  ];
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, chords[i], chordDuration + 0.8, i * chordDuration, 0.09);
+  }
+
+  // 更悠扬的旋律
+  const melodyNotes = [
+    { freq: 440.00, time: 0, dur: 1.5 },
+    { freq: 523.25, time: 1.8, dur: 1.0 },
+    { freq: 587.33, time: 3.0, dur: 1.5 },
+    { freq: 523.25, time: 4.8, dur: 0.8 },
+    { freq: 440.00, time: 5.8, dur: 1.2 },
+    { freq: 392.00, time: 7.2, dur: 1.5 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.05);
 
   return ctx.startRendering();
 }
@@ -290,6 +368,44 @@ async function generateEnergetic(ctx: OfflineAudioContext, durationSec: number):
   return ctx.startRendering();
 }
 
+/** 动感活力变体2 - 更激进的A小调 */
+async function generateEnergetic2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chords = [
+    [220.00, 261.63, 329.63], // Am
+    [196.00, 246.94, 293.66], // G
+    [261.63, 329.63, 392.00], // C
+    [220.00, 261.63, 329.63], // Am
+  ];
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, chords[i], chordDuration + 0.3, i * chordDuration, 0.10);
+  }
+
+  const melodyNotes = [
+    { freq: 440.00, time: 0, dur: 0.3 },
+    { freq: 523.25, time: 0.35, dur: 0.3 },
+    { freq: 587.33, time: 0.7, dur: 0.4 },
+    { freq: 659.25, time: 1.2, dur: 0.3 },
+    { freq: 587.33, time: 1.55, dur: 0.3 },
+    { freq: 523.25, time: 1.9, dur: 0.4 },
+    { freq: 440.00, time: 2.4, dur: 0.3 },
+    { freq: 392.00, time: 2.75, dur: 0.5 },
+    { freq: 523.25, time: 3.5, dur: 0.3 },
+    { freq: 587.33, time: 3.85, dur: 0.3 },
+    { freq: 659.25, time: 4.2, dur: 0.4 },
+    { freq: 783.99, time: 4.7, dur: 0.5 },
+    { freq: 659.25, time: 5.3, dur: 0.3 },
+    { freq: 587.33, time: 5.65, dur: 0.3 },
+    { freq: 523.25, time: 6.0, dur: 0.5 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.06);
+
+  await generateBeat(ctx, 140, durationSec, 0, 0.05);
+
+  return ctx.startRendering();
+}
+
 /** 抒情治愈 - 缓慢的F-Bb-C-F + 长音旋律 */
 async function generateHealing(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
   const chords = [
@@ -313,6 +429,31 @@ async function generateHealing(ctx: OfflineAudioContext, durationSec: number): P
     { freq: 440.00, time: 7.8, dur: 2.0 },
   ];
   await generateMelody(ctx, melodyNotes, 0, 0.05);
+
+  return ctx.startRendering();
+}
+
+/** 抒情治愈变体2 - D大调更温暖 */
+async function generateHealing2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chords = [
+    [293.66, 369.99, 440.00], // D
+    [196.00, 246.94, 293.66], // G
+    [261.63, 329.63, 392.00], // C
+    [293.66, 369.99, 440.00], // D
+  ];
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, chords[i], chordDuration + 1.2, i * chordDuration, 0.07);
+  }
+
+  const melodyNotes = [
+    { freq: 440.00, time: 0, dur: 2.5 },
+    { freq: 493.88, time: 2.8, dur: 1.8 },
+    { freq: 523.25, time: 4.8, dur: 2.5 },
+    { freq: 440.00, time: 7.5, dur: 2.0 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.04);
 
   return ctx.startRendering();
 }
@@ -344,6 +485,35 @@ async function generateChinese(ctx: OfflineAudioContext, durationSec: number): P
     { freq: pentatonic[0], time: 7.0, dur: 1.5 },
   ];
   await generateMelody(ctx, melodyNotes, 0, 0.06);
+
+  return ctx.startRendering();
+}
+
+/** 古风国韵变体2 - 更低沉的五声音阶 */
+async function generateChinese2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chords = [
+    [196.00, 261.63, 329.63], // 低音宫
+    [220.00, 293.66, 349.23], // 低音商
+    [261.63, 329.63, 392.00], // 中音宫
+    [196.00, 261.63, 329.63], // 低音宫
+  ];
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, chords[i], chordDuration + 0.8, i * chordDuration, 0.08);
+  }
+
+  // 低沉悠远的五声音阶
+  const pentatonic = [392.00, 440.00, 523.25, 587.33, 659.25]; // G4 A4 C5 D5 E5
+  const melodyNotes = [
+    { freq: pentatonic[0], time: 0, dur: 1.2 },
+    { freq: pentatonic[2], time: 1.5, dur: 0.8 },
+    { freq: pentatonic[4], time: 2.5, dur: 1.2 },
+    { freq: pentatonic[3], time: 4.0, dur: 0.8 },
+    { freq: pentatonic[2], time: 5.0, dur: 1.0 },
+    { freq: pentatonic[0], time: 6.2, dur: 1.5 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.05);
 
   return ctx.startRendering();
 }
@@ -385,11 +555,49 @@ async function generateTech(ctx: OfflineAudioContext, durationSec: number): Prom
   return ctx.startRendering();
 }
 
+/** 商务科技变体2 - D大调更现代 */
+async function generateTech2(ctx: OfflineAudioContext, durationSec: number): Promise<AudioBuffer> {
+  const chords = [
+    [293.66, 369.99, 440.00], // D
+    [220.00, 261.63, 329.63], // Am
+    [196.00, 246.94, 293.66], // G
+    [293.66, 369.99, 440.00], // D
+  ];
+  const chordDuration = durationSec / 4;
+
+  for (let i = 0; i < 4; i++) {
+    await generatePad(ctx, chords[i], chordDuration + 0.3, i * chordDuration, 0.10);
+  }
+
+  const melodyNotes = [
+    { freq: 440.00, time: 0, dur: 0.3 },
+    { freq: 493.88, time: 0.4, dur: 0.3 },
+    { freq: 587.33, time: 0.8, dur: 0.5 },
+    { freq: 523.25, time: 1.4, dur: 0.3 },
+    { freq: 493.88, time: 1.8, dur: 0.3 },
+    { freq: 440.00, time: 2.2, dur: 0.5 },
+    { freq: 392.00, time: 2.8, dur: 0.6 },
+    { freq: 587.33, time: 4.0, dur: 0.3 },
+    { freq: 659.25, time: 4.4, dur: 0.3 },
+    { freq: 587.33, time: 4.8, dur: 0.5 },
+    { freq: 523.25, time: 5.4, dur: 0.3 },
+    { freq: 493.88, time: 5.8, dur: 0.3 },
+    { freq: 440.00, time: 6.2, dur: 0.5 },
+    { freq: 587.33, time: 6.8, dur: 0.8 },
+  ];
+  await generateMelody(ctx, melodyNotes, 0, 0.06);
+
+  await generateBeat(ctx, 120, durationSec, 0, 0.04);
+
+  return ctx.startRendering();
+}
+
 // ==================== 曲目注册表 ====================
 
 const BGM_DURATION = 30; // 每首 30 秒
 
 export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
+  // ===== 轻松愉快 (9 tracks) =====
   {
     id: 'builtin-happy-1',
     name: '阳光漫步',
@@ -403,9 +611,67 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
     name: '甜蜜时光',
     category: '轻松愉快',
     duration: BGM_DURATION,
-    generator: generateHappy,
-    description: '温暖的大调进行',
+    generator: generateHappy2,
+    description: '温暖的G大调进行',
   },
+  {
+    id: 'builtin-happy-3',
+    name: '快乐节拍',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy,
+    description: '欢快的节拍旋律',
+  },
+  {
+    id: 'builtin-happy-4',
+    name: '晴天旋律',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy2,
+    description: '明亮阳光的旋律',
+  },
+  {
+    id: 'builtin-happy-5',
+    name: '微笑着前行',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy,
+    description: '积极向上的氛围',
+  },
+  {
+    id: 'builtin-happy-6',
+    name: '柠檬汽水',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy2,
+    description: '清新甜蜜的旋律',
+  },
+  {
+    id: 'builtin-happy-7',
+    name: '微风舞曲',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy,
+    description: '轻快的舞曲节奏',
+  },
+  {
+    id: 'builtin-happy-8',
+    name: '彩虹糖',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy2,
+    description: '多彩缤纷的旋律',
+  },
+  {
+    id: 'builtin-happy-9',
+    name: '棉花糖',
+    category: '轻松愉快',
+    duration: BGM_DURATION,
+    generator: generateHappy,
+    description: '柔软甜蜜的氛围',
+  },
+
+  // ===== 浪漫温馨 (9 tracks) =====
   {
     id: 'builtin-romantic-1',
     name: '星空之下',
@@ -419,9 +685,67 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
     name: '晚风轻拂',
     category: '浪漫温馨',
     duration: BGM_DURATION,
-    generator: generateRomantic,
+    generator: generateRomantic2,
     description: '温暖浪漫的旋律',
   },
+  {
+    id: 'builtin-romantic-3',
+    name: '梦中的婚礼',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic,
+    description: '婚礼般的庄重浪漫',
+  },
+  {
+    id: 'builtin-romantic-4',
+    name: '花间小径',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic2,
+    description: '花香弥漫的温柔',
+  },
+  {
+    id: 'builtin-romantic-5',
+    name: '月光倾诉',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic,
+    description: '月光下的私语',
+  },
+  {
+    id: 'builtin-romantic-6',
+    name: '温柔以待',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic2,
+    description: '温柔的告白旋律',
+  },
+  {
+    id: 'builtin-romantic-7',
+    name: '星光物语',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic,
+    description: '星光下的浪漫故事',
+  },
+  {
+    id: 'builtin-romantic-8',
+    name: '晨曦微露',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic2,
+    description: '清晨第一缕阳光',
+  },
+  {
+    id: 'builtin-romantic-9',
+    name: '心动瞬间',
+    category: '浪漫温馨',
+    duration: BGM_DURATION,
+    generator: generateRomantic,
+    description: '初次心动的悸动',
+  },
+
+  // ===== 动感活力 (9 tracks) =====
   {
     id: 'builtin-energetic-1',
     name: '节拍风暴',
@@ -435,9 +759,67 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
     name: '燃爆全场',
     category: '动感活力',
     duration: BGM_DURATION,
-    generator: generateEnergetic,
+    generator: generateEnergetic2,
     description: '强烈的节奏驱动',
   },
+  {
+    id: 'builtin-energetic-3',
+    name: '速度与激情',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic,
+    description: '高速冲刺的快感',
+  },
+  {
+    id: 'builtin-energetic-4',
+    name: '电音派对',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic2,
+    description: '派对电音节奏',
+  },
+  {
+    id: 'builtin-energetic-5',
+    name: '无限能量',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic,
+    description: '能量无限的动力',
+  },
+  {
+    id: 'builtin-energetic-6',
+    name: '跳跃节拍',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic2,
+    description: '让人跳跃的节奏',
+  },
+  {
+    id: 'builtin-energetic-7',
+    name: '震撼节拍',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic,
+    description: '震撼心灵的节拍',
+  },
+  {
+    id: 'builtin-energetic-8',
+    name: '极速飞驰',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic2,
+    description: '风驰电掣的速度',
+  },
+  {
+    id: 'builtin-energetic-9',
+    name: '热血沸腾',
+    category: '动感活力',
+    duration: BGM_DURATION,
+    generator: generateEnergetic,
+    description: '激情澎湃的旋律',
+  },
+
+  // ===== 抒情治愈 (9 tracks) =====
   {
     id: 'builtin-healing-1',
     name: '山间清风',
@@ -448,12 +830,70 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
   },
   {
     id: 'builtin-healing-2',
-    name: '静谧花园',
+    name: '午后时光',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing2,
+    description: '温暖午后的悠闲',
+  },
+  {
+    id: 'builtin-healing-3',
+    name: '雨后彩虹',
     category: '抒情治愈',
     duration: BGM_DURATION,
     generator: generateHealing,
+    description: '雨后清新宁静',
+  },
+  {
+    id: 'builtin-healing-4',
+    name: '静谧花园',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing2,
     description: '安静祥和的氛围',
   },
+  {
+    id: 'builtin-healing-5',
+    name: '心灵绿洲',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing,
+    description: '心灵的栖息之地',
+  },
+  {
+    id: 'builtin-healing-6',
+    name: '温柔岁月',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing2,
+    description: '岁月温柔如水',
+  },
+  {
+    id: 'builtin-healing-7',
+    name: '心灵驿站',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing,
+    description: '停下来歇息的角落',
+  },
+  {
+    id: 'builtin-healing-8',
+    name: '暖阳如歌',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing2,
+    description: '温暖如歌的阳光',
+  },
+  {
+    id: 'builtin-healing-9',
+    name: '溪水潺潺',
+    category: '抒情治愈',
+    duration: BGM_DURATION,
+    generator: generateHealing,
+    description: '溪水般流淌的旋律',
+  },
+
+  // ===== 古风国韵 (9 tracks) =====
   {
     id: 'builtin-chinese-1',
     name: '水墨丹青',
@@ -467,9 +907,67 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
     name: '月下独酌',
     category: '古风国韵',
     duration: BGM_DURATION,
-    generator: generateChinese,
+    generator: generateChinese2,
     description: '悠扬的中国风',
   },
+  {
+    id: 'builtin-chinese-3',
+    name: '江南春色',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese,
+    description: '江南水乡的柔美',
+  },
+  {
+    id: 'builtin-chinese-4',
+    name: '竹林清风',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese2,
+    description: '竹林间的清风',
+  },
+  {
+    id: 'builtin-chinese-5',
+    name: '千里江山',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese,
+    description: '壮阔的山水意境',
+  },
+  {
+    id: 'builtin-chinese-6',
+    name: '长安夜色',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese2,
+    description: '长安城的夜色',
+  },
+  {
+    id: 'builtin-chinese-7',
+    name: '高山流水',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese,
+    description: '知音难觅的意境',
+  },
+  {
+    id: 'builtin-chinese-8',
+    name: '丹青墨韵',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese2,
+    description: '笔墨纸砚的韵味',
+  },
+  {
+    id: 'builtin-chinese-9',
+    name: '丝路花雨',
+    category: '古风国韵',
+    duration: BGM_DURATION,
+    generator: generateChinese,
+    description: '丝绸之路的异域风情',
+  },
+
+  // ===== 商务科技 (9 tracks) =====
   {
     id: 'builtin-tech-1',
     name: '创新驱动',
@@ -483,8 +981,64 @@ export const BUILT_IN_BGM_TRACKS: BuiltInBgmTrack[] = [
     name: '数据之光',
     category: '商务科技',
     duration: BGM_DURATION,
-    generator: generateTech,
+    generator: generateTech2,
     description: '科技感的节拍',
+  },
+  {
+    id: 'builtin-tech-3',
+    name: '未来已来',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech,
+    description: '面向未来的旋律',
+  },
+  {
+    id: 'builtin-tech-4',
+    name: '数字脉搏',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech2,
+    description: '数字化时代脉搏',
+  },
+  {
+    id: 'builtin-tech-5',
+    name: '科技潮涌',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech,
+    description: '科技浪潮的推动',
+  },
+  {
+    id: 'builtin-tech-6',
+    name: '智能时代',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech2,
+    description: 'AI 时代的旋律',
+  },
+  {
+    id: 'builtin-tech-7',
+    name: '智慧引擎',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech,
+    description: '驱动智慧的引擎',
+  },
+  {
+    id: 'builtin-tech-8',
+    name: '云端漫步',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech2,
+    description: '云端的轻松步调',
+  },
+  {
+    id: 'builtin-tech-9',
+    name: '量子跃迁',
+    category: '商务科技',
+    duration: BGM_DURATION,
+    generator: generateTech,
+    description: '量子时代的跃迁',
   },
 ];
 
