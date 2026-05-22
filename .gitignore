@@ -52,3 +52,9 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Electron build output
+/dist-electron/
+/download/*.exe
+/download/*.zip
+package-lock.json
