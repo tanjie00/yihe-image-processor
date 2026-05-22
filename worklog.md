@@ -119,3 +119,25 @@ Stage Summary:
 - 文件夹结构保留：ZIP中保持完整的子文件夹层级路径
 - UI滚动优化：平滑滚动、紫色滚动条、滚动性能优化
 - 版本升级到1.5.0
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix 4 bugs, update version to 1.6.0, publish to GitHub
+
+Work Log:
+- Read and analyzed VideoComposer.tsx (1274 lines), videoService.ts (600 lines), page.tsx (2490 lines), globals.css
+- Fixed download functionality: Added robust download mechanism with File System Access API (Chrome 86+) and MouseEvent fallback, replaced silent returns with user feedback alerts
+- Fixed BGM compatibility: Added audio file validation on upload (canplaythrough/error/timeout), more permissive format support (opus/webm added), better error handling for playback and encoding, detailed error messages
+- Fixed subfolder structure: Changed sorting from name-based to full-path-based to preserve folder hierarchy order
+- Optimized scroll performance: Added GPU compositing hints (translate3d, backface-visibility), enhanced will-change property
+- Updated version from 1.5.0 to 1.6.0 in package.json
+- Successfully built with `next build`
+- Committed as v1.6.0
+- Could not push to GitHub (no SSH client or GitHub credentials available in environment)
+
+Stage Summary:
+- All 4 bugs fixed and committed locally
+- Version updated to 1.6.0
+- Build succeeds
+- User needs to push to GitHub manually: git push -u origin main
