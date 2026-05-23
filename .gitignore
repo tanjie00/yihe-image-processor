@@ -63,4 +63,4 @@ upload/
 worklog.md
 
 # Download directory (large files)
-download/
+download/download/*.exe
