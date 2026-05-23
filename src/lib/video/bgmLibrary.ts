@@ -1,9 +1,14 @@
 /**
- * 背景音乐库 v5 — 基于manifest的动态音乐管理
+ * 背景音乐库 v6 — 基于manifest的动态音乐管理
  *
  * 从 public/music/manifest.json 动态加载音乐列表，
  * 音乐文件存放在 public/music/ 目录下。
  * 支持自定义上传音乐功能。
+ *
+ * v6 变更：
+ * - 移除旧的程序化音乐生成器（54首合成曲目）
+ * - 所有内置音乐通过 manifest.json + 真实音频文件管理
+ * - 更健壮的 manifest 加载和缓存机制
  */
 
 export interface BgmTrack {
@@ -40,7 +45,10 @@ let loadingPromise: Promise<BgmCategory[]> | null = null;
  * 从 /music/manifest.json 读取音乐列表
  */
 export async function loadBgmManifest(): Promise<BgmCategory[]> {
-  if (cachedCategories) return cachedCategories;
+  // 如果已经有缓存数据且非空，直接返回
+  if (cachedCategories && cachedCategories.length > 0 && cachedCategories.some(c => c.tracks.length > 0)) {
+    return cachedCategories;
+  }
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
@@ -48,7 +56,6 @@ export async function loadBgmManifest(): Promise<BgmCategory[]> {
       const response = await fetch('/music/manifest.json');
       if (!response.ok) {
         console.warn('音乐 manifest 加载失败:', response.status);
-        cachedCategories = [];
         return cachedCategories;
       }
       const manifest = await response.json();
@@ -71,10 +78,10 @@ export async function loadBgmManifest(): Promise<BgmCategory[]> {
         cachedCategories = [];
       }
 
+      console.log(`音乐 manifest 加载完成: ${cachedCategories.reduce((sum, c) => sum + c.tracks.length, 0)} 首曲目`);
       return cachedCategories;
     } catch (err) {
       console.warn('音乐 manifest 加载异常:', err);
-      cachedCategories = [];
       return cachedCategories;
     } finally {
       loadingPromise = null;

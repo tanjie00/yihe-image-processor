@@ -292,7 +292,13 @@ async function generateVideoFast(
   // 预处理背景音乐
   let audioData: { samples: Float32Array[]; sampleRate: number; numberOfChannels: number } | null = null;
   if (bgmOptions?.audioBuffer && hasAudioEncoder) {
-    audioData = prepareAudioSamples(bgmOptions.audioBuffer, videoDurationSec, bgmOptions.volume);
+    try {
+      audioData = prepareAudioSamples(bgmOptions.audioBuffer, videoDurationSec, bgmOptions.volume);
+      console.log(`音频预处理完成: 采样率=${audioData.sampleRate}Hz, 声道=${audioData.numberOfChannels}, 时长=${videoDurationSec.toFixed(1)}s`);
+    } catch (e) {
+      console.error('音频预处理失败，将不带音频合成:', e);
+      audioData = null;
+    }
   }
 
   // 创建画布
@@ -372,6 +378,8 @@ async function generateVideoFast(
   let audioEncoder: AudioEncoder | null = null;
   let audioEncoderError: Error | null = null;
   let selectedAudioCodec: string | null = null;
+  let audioEncodingFailed = false; // 标记音频编码是否中途失败
+
   if (audioData) {
     // 检测 AAC 编码器支持 — WebCodecs 使用 'mp4a.40.2' 而非 'aac'
     let audioCodec = 'mp4a.40.2'; // AAC-LC
@@ -409,7 +417,7 @@ async function generateVideoFast(
   if (audioData && selectedAudioCodec) {
     audioEncoder = new AudioEncoder({
       output: (chunk, meta) => {
-        if (!audioEncoderError) {
+        if (!audioEncoderError && !audioEncodingFailed) {
           muxer.addAudioChunk(chunk, meta as any);
         }
       },
@@ -426,6 +434,7 @@ async function generateVideoFast(
         numberOfChannels: audioData.numberOfChannels,
         bitrate: 128000,
       });
+      console.log(`AudioEncoder 配置成功: codec=${selectedAudioCodec}, sampleRate=${audioData.sampleRate}, channels=${audioData.numberOfChannels}`);
     } catch (e: any) {
       console.error('AudioEncoder.configure 失败:', e);
       audioEncoderError = e;
@@ -443,6 +452,7 @@ async function generateVideoFast(
     let audioTimestamp = 0;
     const audioSampleDuration = Math.round(1_000_000 / audioData.sampleRate); // 微秒
 
+    let encodedChunks = 0;
     for (let offset = 0; offset < totalAudioFrames; offset += aacFrameSize) {
       const frameCount = Math.min(aacFrameSize, totalAudioFrames - offset);
 
@@ -465,18 +475,32 @@ async function generateVideoFast(
         });
         audioEncoder.encode(audioDataChunk);
         audioDataChunk.close();
+        encodedChunks++;
       } catch (e) {
-        console.warn('Audio encode chunk failed:', e);
+        console.warn('Audio encode chunk failed at offset', offset, ':', e);
+        audioEncodingFailed = true;
         break; // 如果某个 chunk 编码失败，停止后续音频编码
       }
 
       // 检查 AudioEncoder 是否出错
       if (audioEncoderError) {
         console.error('音频编码过程中出错，停止音频编码:', audioEncoderError);
+        audioEncodingFailed = true;
         break;
       }
 
       audioTimestamp += frameCount * audioSampleDuration;
+    }
+
+    console.log(`音频编码完成: ${encodedChunks} chunks, ${audioEncodingFailed ? '有错误' : '成功'}`);
+
+    // 如果音频编码中途失败，需要重新开始不带音频的视频合成
+    if (audioEncodingFailed) {
+      console.warn('音频编码失败，将重新合成不带音频的视频');
+      try { audioEncoder.close(); } catch (_) {}
+      try { encoder.close(); } catch (_) {}
+      // 递归调用自身，不带 BGM
+      return await generateVideoFast(images, settings, onProgress, signal, undefined);
     }
   }
 
@@ -526,8 +550,12 @@ async function generateVideoFast(
   // 等待编码器完成所有帧的编码
   await encoder.flush();
   if (audioEncoder) {
-    await audioEncoder.flush();
-    audioEncoder.close();
+    try {
+      await audioEncoder.flush();
+    } catch (e) {
+      console.warn('AudioEncoder flush 失败，视频将不含音频:', e);
+    }
+    try { audioEncoder.close(); } catch (_) {}
   }
   muxer.finalize();
 
@@ -654,6 +682,9 @@ async function generateVideoFallback(
  *  - 内置音乐：从 /music/ 目录加载真实音频文件
  *  - 自定义上传：从 File 对象解码
  *  - 外部 URL：从网络下载并解码
+ *
+ *  所有音频会被重采样到 AudioEncoder 兼容的采样率（44100Hz 或 48000Hz），
+ *  以确保视频合成时音频编码不会失败。
  */
 export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: string): Promise<AudioBuffer> {
   // 内置音乐 — 从 /music/ 目录加载真实音频文件
@@ -670,8 +701,10 @@ export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: s
         throw new Error(`音乐文件加载失败: ${fileUrl} (HTTP ${response.status})`);
       }
       const arrayBuffer = await response.arrayBuffer();
-      const buffer = await audioCtx.decodeAudioData(arrayBuffer);
-      console.log(`从文件加载内置音乐: ${fileUrl}`);
+      let buffer = await audioCtx.decodeAudioData(arrayBuffer);
+      // 重采样到 AudioEncoder 兼容的采样率
+      buffer = await resampleAudioBuffer(buffer, audioCtx);
+      console.log(`从文件加载内置音乐: ${fileUrl}, 采样率: ${buffer.sampleRate}Hz, 时长: ${buffer.duration.toFixed(1)}s`);
       return buffer;
     } catch (e) {
       console.error(`内置音乐加载失败 (${fileUrl}):`, e);
@@ -686,7 +719,11 @@ export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: s
     const audioCtx = new AudioContext();
     try {
       const arrayBuffer = await urlOrFile.arrayBuffer();
-      return await audioCtx.decodeAudioData(arrayBuffer);
+      let buffer = await audioCtx.decodeAudioData(arrayBuffer);
+      // 重采样到 AudioEncoder 兼容的采样率
+      buffer = await resampleAudioBuffer(buffer, audioCtx);
+      console.log(`自定义音乐已解码: 采样率=${buffer.sampleRate}Hz, 声道=${buffer.numberOfChannels}, 时长=${buffer.duration.toFixed(1)}s`);
+      return buffer;
     } finally {
       await audioCtx.close();
     }
@@ -698,20 +735,81 @@ export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: s
     const response = await fetch(urlOrFile);
     if (!response.ok) throw new Error(`音频下载失败: ${response.status}`);
     const arrayBuffer = await response.arrayBuffer();
-    return await audioCtx.decodeAudioData(arrayBuffer);
+    let buffer = await audioCtx.decodeAudioData(arrayBuffer);
+    buffer = await resampleAudioBuffer(buffer, audioCtx);
+    return buffer;
   } finally {
     await audioCtx.close();
   }
 }
 
-/** 将 AudioBuffer 调整到指定时长（裁剪或循环），返回 Float32Array[] (每通道) */
+/**
+ * 将 AudioBuffer 重采样到 AudioEncoder 兼容的采样率
+ * AAC 编码器通常只支持 44100Hz 和 48000Hz
+ * 如果原始采样率已经是兼容的，则直接返回
+ */
+async function resampleAudioBuffer(buffer: AudioBuffer, audioCtx: AudioContext): Promise<AudioBuffer> {
+  const SUPPORTED_SAMPLE_RATES = [44100, 48000];
+
+  // 如果采样率已经兼容，直接返回
+  if (SUPPORTED_SAMPLE_RATES.includes(buffer.sampleRate)) {
+    return buffer;
+  }
+
+  // 选择最接近的兼容采样率
+  const targetSampleRate = buffer.sampleRate < 44100 ? 44100 : 48000;
+  console.log(`重采样音频: ${buffer.sampleRate}Hz → ${targetSampleRate}Hz`);
+
+  // 使用 OfflineAudioContext 进行重采样
+  const duration = buffer.duration;
+  const offlineCtx = new OfflineAudioContext(
+    buffer.numberOfChannels,
+    Math.ceil(duration * targetSampleRate),
+    targetSampleRate
+  );
+
+  const source = offlineCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+
+  return await offlineCtx.startRendering();
+}
+
+/** 将 AudioBuffer 调整到指定时长（裁剪或循环），返回 Float32Array[] (每通道)
+ *  同时确保声道数不超过 2（AudioEncoder 通常只支持单声道或立体声）
+ */
 function prepareAudioSamples(audioBuffer: AudioBuffer, targetDurationSec: number, volume: number): { samples: Float32Array[]; sampleRate: number; numberOfChannels: number } {
-  const { sampleRate, numberOfChannels } = audioBuffer;
+  let { sampleRate, numberOfChannels } = audioBuffer;
+
+  // 限制声道数为 1 或 2（AudioEncoder 不支持更多声道）
+  if (numberOfChannels > 2) {
+    console.warn(`音频有 ${numberOfChannels} 个声道，将混合为立体声`);
+    numberOfChannels = 2;
+  }
+
   const targetFrames = Math.ceil(targetDurationSec * sampleRate);
   const samples: Float32Array[] = [];
 
   for (let ch = 0; ch < numberOfChannels; ch++) {
-    const channelData = audioBuffer.getChannelData(ch);
+    let channelData: Float32Array;
+
+    if (audioBuffer.numberOfChannels > numberOfChannels) {
+      // 多声道混合为 2 声道：将所有声道平均分配到左右声道
+      const halfChannels = Math.floor(audioBuffer.numberOfChannels / 2);
+      const startCh = ch === 0 ? 0 : halfChannels;
+      const endCh = ch === 0 ? halfChannels : audioBuffer.numberOfChannels;
+      channelData = new Float32Array(audioBuffer.length);
+      for (let c = startCh; c < endCh; c++) {
+        const srcData = audioBuffer.getChannelData(c);
+        for (let i = 0; i < srcData.length; i++) {
+          channelData[i] += srcData[i] / (endCh - startCh);
+        }
+      }
+    } else {
+      channelData = audioBuffer.getChannelData(ch);
+    }
+
     const output = new Float32Array(targetFrames);
 
     if (channelData.length >= targetFrames) {
