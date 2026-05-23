@@ -19,6 +19,8 @@ export interface BgmTrack {
   category: string;
   /** 内置生成标记（无需 URL） */
   isBuiltIn?: boolean;
+  /** 文件型音乐的相对路径（相对于 public/music/ 目录） */
+  filePath?: string;
 }
 
 /** 视频生成设置 */

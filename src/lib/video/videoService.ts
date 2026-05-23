@@ -371,6 +371,7 @@ async function generateVideoFast(
   // 创建 AudioEncoder（如果有背景音乐）
   let audioEncoder: AudioEncoder | null = null;
   let audioEncoderError: Error | null = null;
+  let selectedAudioCodec: string | null = null;
   if (audioData) {
     // 检测 AAC 编码器支持 — WebCodecs 使用 'mp4a.40.2' 而非 'aac'
     let audioCodec = 'mp4a.40.2'; // AAC-LC
@@ -381,7 +382,9 @@ async function generateVideoFast(
         numberOfChannels: audioData.numberOfChannels,
         bitrate: 128000,
       });
-      if (!audioSupport.supported) {
+      if (audioSupport.supported) {
+        selectedAudioCodec = audioCodec;
+      } else {
         console.warn('mp4a.40.2 不支持，尝试 mp4a.40.5 (HE-AAC)...');
         audioCodec = 'mp4a.40.5'; // HE-AAC
         const audioSupport2 = await AudioEncoder.isConfigSupported({
@@ -390,7 +393,9 @@ async function generateVideoFast(
           numberOfChannels: audioData.numberOfChannels,
           bitrate: 128000,
         });
-        if (!audioSupport2.supported) {
+        if (audioSupport2.supported) {
+          selectedAudioCodec = audioCodec;
+        } else {
           console.error('浏览器不支持 AAC 音频编码，将跳过背景音乐');
           audioData = null; // 禁用音频
         }
@@ -401,8 +406,7 @@ async function generateVideoFast(
     }
   }
 
-  if (audioData) {
-    const audioCodec = 'mp4a.40.2'; // 使用已验证的 codec
+  if (audioData && selectedAudioCodec) {
     audioEncoder = new AudioEncoder({
       output: (chunk, meta) => {
         if (!audioEncoderError) {
@@ -417,7 +421,7 @@ async function generateVideoFast(
 
     try {
       audioEncoder.configure({
-        codec: audioCodec,
+        codec: selectedAudioCodec,
         sampleRate: audioData.sampleRate,
         numberOfChannels: audioData.numberOfChannels,
         bitrate: 128000,
@@ -647,40 +651,34 @@ async function generateVideoFallback(
  * @returns 生成的视频 Blob（MP4 格式，兼容路径为 WebM）
  */
 /** 解码背景音乐为 AudioBuffer
- *  - 文件型内置音乐：从 /music/ 目录加载真实音频文件（优先）
- *  - 程序化内置音乐：使用 Web Audio API 生成（文件不存在时回退）
+ *  - 内置音乐：从 /music/ 目录加载真实音频文件
  *  - 自定义上传：从 File 对象解码
- *  - 外部 URL：从网络下载并解码（已弃用，可能因 CORS 不可用）
+ *  - 外部 URL：从网络下载并解码
  */
 export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: string): Promise<AudioBuffer> {
-  // 内置音乐
+  // 内置音乐 — 从 /music/ 目录加载真实音频文件
   if (typeof urlOrFile === 'string' && urlOrFile.startsWith('builtin:')) {
-    const trackId = urlOrFile.replace('builtin:', '');
-
-    // 优先尝试从文件加载（音质更好）
-    if (trackFilePath) {
-      const fileUrl = `/music/${trackFilePath}`;
-      try {
-        const audioCtx = new AudioContext();
-        try {
-          const response = await fetch(fileUrl);
-          if (response.ok) {
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
-            console.log(`从文件加载内置音乐: ${fileUrl}`);
-            return buffer;
-          }
-        } finally {
-          await audioCtx.close();
-        }
-      } catch (e) {
-        console.warn(`文件型音乐加载失败 (${fileUrl})，回退到程序化生成:`, e);
-      }
+    if (!trackFilePath) {
+      throw new Error('内置音乐缺少文件路径，请确保 manifest.json 中配置了 filePath');
     }
 
-    // 回退到程序化生成
-    const { generateBgmAudioBuffer } = await import('./bgmGenerator');
-    return generateBgmAudioBuffer(trackId);
+    const fileUrl = `/music/${trackFilePath}`;
+    const audioCtx = new AudioContext();
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        throw new Error(`音乐文件加载失败: ${fileUrl} (HTTP ${response.status})`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+      console.log(`从文件加载内置音乐: ${fileUrl}`);
+      return buffer;
+    } catch (e) {
+      console.error(`内置音乐加载失败 (${fileUrl}):`, e);
+      throw e;
+    } finally {
+      await audioCtx.close();
+    }
   }
 
   // 自定义上传的文件

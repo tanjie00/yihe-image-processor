@@ -7,7 +7,7 @@ import {
   Sparkles, Clock, Ratio, Layers, Folder, ChevronDown,
   ChevronRight, Check, Settings2, Zap, Eye, Package,
   CheckSquare, Square, AlertCircle, Cpu, Music, Volume2,
-  VolumeX, Search, Globe, ExternalLink, Settings
+  VolumeX, Search
 } from 'lucide-react';
 import {
   generateVideo,
@@ -26,7 +26,7 @@ import type {
   VideoProgress,
   BgmTrack,
 } from '@/lib/video/types';
-import { BGM_CATEGORIES, getAllTracks, getTrackById, formatTrackDuration } from '@/lib/video/bgmLibrary';
+import { getAllTracks, getTrackById, formatTrackDuration, loadBgmManifest, getBgmCategories, invalidateBgmCache } from '@/lib/video/bgmLibrary';
 
 // ==================== Types ====================
 
@@ -153,16 +153,14 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   const [customBgmFile, setCustomBgmFile] = useState<File | null>(null);
   const [isBgmPlaying, setIsBgmPlaying] = useState(false);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [bgmCategories, setBgmCategories] = useState<any[]>([]);
 
-  // Pixabay online music state
-  const [bgmTab, setBgmTab] = useState<'builtin' | 'online'>('builtin');
-  const [pixabayQuery, setPixabayQuery] = useState('');
-  const [pixabayResults, setPixabayResults] = useState<any[]>([]);
-  const [pixabayLoading, setPixabayLoading] = useState(false);
-  const [pixabayApiKey, setPixabayApiKey] = useState('');
-  const [showPixabaySettings, setShowPixabaySettings] = useState(false);
-  const [pixabayPreviewId, setPixabayPreviewId] = useState<number | null>(null);
-  const pixabayPreviewRef = useRef<HTMLAudioElement | null>(null);
+  // Load music manifest on mount
+  useEffect(() => {
+    loadBgmManifest().then(cats => {
+      setBgmCategories(cats);
+    });
+  }, []);
 
   // ==================== Helpers ====================
   const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -294,7 +292,20 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
 
     stopBgmPreview();
 
-    // 内置音乐无法直接用 <audio> 预览，使用 AudioContext 播放
+    // 内置音乐：使用 <audio> 直接播放文件（更轻量）
+    if (track?.isBuiltIn && track.filePath) {
+      const audio = new Audio(`/music/${track.filePath}`);
+      audio.volume = bgmVolume;
+      audio.play().catch(() => {});
+      bgmAudioRef.current = audio;
+      setIsBgmPlaying(true);
+      audio.addEventListener('ended', () => {
+        setIsBgmPlaying(false);
+      });
+      return;
+    }
+
+    // 使用已解码的 AudioBuffer 播放（备用方案）
     if (track?.isBuiltIn && bgmAudioBuffer) {
       try {
         const audioCtx = new AudioContext();
@@ -343,109 +354,6 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
     setIsBgmPlaying(false);
   }, []);
 
-  // Initialize Pixabay API key from localStorage
-  useEffect(() => {
-    const savedKey = localStorage.getItem('pixabay_api_key');
-    if (savedKey) setPixabayApiKey(savedKey);
-  }, []);
-
-  // Search Pixabay music
-  const searchPixabayMusic = useCallback(async () => {
-    if (!pixabayApiKey) {
-      alert('请先设置 Pixabay API Key');
-      setShowPixabaySettings(true);
-      return;
-    }
-    setPixabayLoading(true);
-    try {
-      const response = await fetch(`/api/pixabay-music?q=${encodeURIComponent(pixabayQuery || 'background music')}&per_page=50`);
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || '搜索失败');
-      }
-      const data = await response.json();
-      if (data.hits) {
-        setPixabayResults(data.hits.filter((h: any) => h.audio || h.type === 'music'));
-      } else {
-        setPixabayResults([]);
-      }
-    } catch (err: any) {
-      console.error('Pixabay search failed:', err);
-      alert(`搜索失败: ${err.message}`);
-      setPixabayResults([]);
-    } finally {
-      setPixabayLoading(false);
-    }
-  }, [pixabayApiKey, pixabayQuery]);
-
-  // Select Pixabay track as BGM
-  const handleSelectPixabayTrack = useCallback(async (track: any) => {
-    stopBgmPreview();
-    setSelectedBgmId(`pixabay-${track.id}`);
-    setCustomBgmFile(null);
-    setBgmError(null);
-    setBgmLoading(true);
-
-    try {
-      const audioUrl = track.audio;
-      if (!audioUrl) throw new Error('No audio URL available');
-
-      const proxyUrl = `/api/pixabay-download?url=${encodeURIComponent(audioUrl)}`;
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error('Download failed');
-      const blob = await response.blob();
-      const file = new File([blob], `pixabay_${track.id}.mp3`, { type: 'audio/mpeg' });
-
-      const buffer = await decodeBgmAudio(file);
-      setBgmAudioBuffer(buffer);
-    } catch (err: any) {
-      setBgmError(`加载失败: ${err.message}`);
-      setBgmAudioBuffer(null);
-      setSelectedBgmId(null);
-    } finally {
-      setBgmLoading(false);
-    }
-  }, [stopBgmPreview, decodeBgmAudio]);
-
-  // Play preview of a Pixabay track
-  const playPixabayPreview = useCallback((track: any) => {
-    // Stop any existing preview
-    if (pixabayPreviewRef.current) {
-      pixabayPreviewRef.current.pause();
-      pixabayPreviewRef.current = null;
-    }
-    setPixabayPreviewId(null);
-
-    if (!track.audio) return;
-
-    const audio = new Audio(track.audio);
-    audio.volume = bgmVolume;
-    audio.play().catch(() => {});
-    pixabayPreviewRef.current = audio;
-    setPixabayPreviewId(track.id);
-
-    audio.addEventListener('ended', () => {
-      setPixabayPreviewId(null);
-      pixabayPreviewRef.current = null;
-    });
-  }, [bgmVolume]);
-
-  const stopPixabayPreview = useCallback(() => {
-    if (pixabayPreviewRef.current) {
-      pixabayPreviewRef.current.pause();
-      pixabayPreviewRef.current = null;
-    }
-    setPixabayPreviewId(null);
-  }, []);
-
-  // Save Pixabay API key
-  const savePixabayApiKey = () => {
-    if (pixabayApiKey.trim()) {
-      localStorage.setItem('pixabay_api_key', pixabayApiKey.trim());
-      setShowPixabaySettings(false);
-    }
-  };
-
   // Clean up audio on unmount
   useEffect(() => {
     return () => {
@@ -453,18 +361,14 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         bgmAudioRef.current.pause();
         bgmAudioRef.current = null;
       }
-      if (pixabayPreviewRef.current) {
-        pixabayPreviewRef.current.pause();
-        pixabayPreviewRef.current = null;
-      }
     };
   }, []);
 
   // Filter tracks by search query
   const filteredCategories = useMemo(() => {
-    if (!bgmSearchQuery.trim()) return BGM_CATEGORIES;
+    if (!bgmSearchQuery.trim()) return bgmCategories;
     const query = bgmSearchQuery.toLowerCase();
-    return BGM_CATEGORIES.map(cat => ({
+    return bgmCategories.map(cat => ({
       ...cat,
       tracks: cat.tracks.filter(t =>
         t.name.toLowerCase().includes(query) ||
@@ -472,7 +376,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         t.category.toLowerCase().includes(query)
       ),
     })).filter(cat => cat.tracks.length > 0);
-  }, [bgmSearchQuery]);
+  }, [bgmSearchQuery, bgmCategories]);
 
   // ==================== Import from Image Tab ====================
 
@@ -1298,30 +1202,10 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 </div>
               )}
 
-              {/* BGM Tab Switcher */}
-              <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
-                <button
-                  onClick={() => setBgmTab('builtin')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    bgmTab === 'builtin'
-                      ? 'bg-pink-600/30 text-pink-300 border border-pink-500/30'
-                      : 'text-gray-500 hover:text-gray-300 border border-transparent'
-                  }`}
-                >
-                  <Music className="w-3 h-3" />
-                  内置音乐
-                </button>
-                <button
-                  onClick={() => setBgmTab('online')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    bgmTab === 'online'
-                      ? 'bg-pink-600/30 text-pink-300 border border-pink-500/30'
-                      : 'text-gray-500 hover:text-gray-300 border border-transparent'
-                  }`}
-                >
-                  <Globe className="w-3 h-3" />
-                  在线音乐
-                </button>
+              {/* BGM Tab Label */}
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Music className="w-3 h-3" />
+                <span>内置音乐</span>
               </div>
 
               {/* Custom Upload + Clear (shared) */}
@@ -1370,15 +1254,12 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-medium text-white truncate">
-                        {customBgmFile ? customBgmFile.name : selectedBgmId.startsWith('pixabay-') ? `Pixabay #${selectedBgmId.replace('pixabay-', '')}` : getTrackById(selectedBgmId)?.name || '未知'}
+                        {customBgmFile ? customBgmFile.name : getTrackById(selectedBgmId)?.name || '未知'}
                       </div>
-                      {!customBgmFile && !selectedBgmId.startsWith('pixabay-') && getTrackById(selectedBgmId) && (
+                      {!customBgmFile && getTrackById(selectedBgmId) && (
                         <div className="text-[10px] text-gray-500">
                           {getTrackById(selectedBgmId)!.artist} · {formatTrackDuration(getTrackById(selectedBgmId)!.duration)}
                         </div>
-                      )}
-                      {selectedBgmId.startsWith('pixabay-') && (
-                        <div className="text-[10px] text-gray-500">Pixabay 在线音乐</div>
                       )}
                     </div>
                     <button
@@ -1409,10 +1290,9 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                 </div>
               )}
 
-              {/* Tab Content: Built-in Music */}
-              {bgmTab === 'builtin' && (
-                <>
-                  {/* Search */}
+              {/* Built-in Music List */}
+              <>
+                {/* Search */}
                   <div className="flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-pink-500/50 transition-colors">
                     <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
                     <input
@@ -1459,135 +1339,13 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
                       </div>
                     ))}
                     {filteredCategories.length === 0 && (
-                      <div className="text-center text-xs text-gray-600 py-4">没有找到匹配的音乐</div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* Tab Content: Online Music (Pixabay) */}
-              {bgmTab === 'online' && (
-                <>
-                  {/* API Key Settings */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <Settings className="w-3 h-3" />
-                        <span>Pixabay API Key</span>
-                        {pixabayApiKey && !showPixabaySettings && (
-                          <span className="text-[10px] text-emerald-400">已配置</span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => setShowPixabaySettings(!showPixabaySettings)}
-                        className="text-[10px] text-pink-400 hover:text-pink-300"
-                      >
-                        {showPixabaySettings ? '收起' : '设置'}
-                      </button>
-                    </div>
-                    {showPixabaySettings && (
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="password"
-                          value={pixabayApiKey}
-                          onChange={e => setPixabayApiKey(e.target.value)}
-                          placeholder="输入 Pixabay API Key"
-                          className="flex-1 bg-gray-900 text-xs text-white py-1.5 px-2 rounded-lg border border-gray-700 focus:border-pink-500/50 outline-none placeholder-gray-600"
-                        />
-                        <button
-                          onClick={savePixabayApiKey}
-                          className="px-2 py-1.5 text-[10px] bg-pink-600/30 hover:bg-pink-600/50 text-pink-300 rounded-lg border border-pink-500/30 transition-colors"
-                        >
-                          保存
-                        </button>
-                      </div>
-                    )}
-                    {!pixabayApiKey && (
-                      <div className="text-[10px] text-gray-500">
-                        免费申请：{' '}
-                        <a
-                          href="https://pixabay.com/api/docs/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-pink-400 hover:text-pink-300 underline inline-flex items-center gap-0.5"
-                        >
-                          pixabay.com/api/docs <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Search */}
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 flex items-center bg-gray-900 rounded-lg px-2 border border-gray-700 focus-within:border-pink-500/50 transition-colors">
-                      <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                      <input
-                        type="text"
-                        value={pixabayQuery}
-                        onChange={e => setPixabayQuery(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') searchPixabayMusic(); }}
-                        placeholder="搜索在线音乐..."
-                        className="w-full bg-transparent text-xs text-white py-2 px-2 outline-none placeholder-gray-600"
-                      />
-                    </div>
-                    <button
-                      onClick={searchPixabayMusic}
-                      disabled={pixabayLoading}
-                      className="px-3 py-2 text-xs bg-pink-600/30 hover:bg-pink-600/50 text-pink-300 rounded-lg border border-pink-500/30 transition-colors disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {pixabayLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                      搜索
-                    </button>
-                  </div>
-
-                  {/* Results */}
-                  <div className="space-y-1 max-h-60 overflow-y-auto scrollbar-thin pr-1 scroll-container">
-                    {pixabayLoading && (
-                      <div className="flex items-center justify-center py-6">
-                        <Loader2 className="w-5 h-5 animate-spin text-pink-400" />
-                      </div>
-                    )}
-                    {!pixabayLoading && pixabayResults.length === 0 && pixabayApiKey && (
                       <div className="text-center text-xs text-gray-600 py-4">
-                        输入关键词搜索免费无版权音乐
+                        {bgmSearchQuery ? '没有找到匹配的音乐' : '暂无内置音乐，请上传音乐文件或添加到 music 目录'}
                       </div>
                     )}
-                    {!pixabayLoading && pixabayResults.map((track) => (
-                      <div
-                        key={track.id}
-                        className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-all ${
-                          selectedBgmId === `pixabay-${track.id}`
-                            ? 'bg-pink-900/40 border border-pink-500/50 text-white'
-                            : 'bg-gray-800/50 border border-transparent hover:bg-gray-800 text-gray-400 hover:text-gray-300'
-                        }`}
-                      >
-                        <Globe className={`w-3 h-3 flex-shrink-0 ${selectedBgmId === `pixabay-${track.id}` ? 'text-pink-400' : 'text-gray-600'}`} />
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate">{track.tags || track.name || `Track #${track.id}`}</div>
-                          <div className="text-[10px] text-gray-600 truncate">{track.user || 'Unknown'}</div>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => pixabayPreviewId === track.id ? stopPixabayPreview() : playPixabayPreview(track)}
-                            className="w-6 h-6 rounded-full bg-gray-700/50 hover:bg-pink-600/30 text-gray-400 hover:text-pink-300 flex items-center justify-center transition-colors"
-                            title="预览"
-                          >
-                            {pixabayPreviewId === track.id ? <Pause className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5 fill-current" />}
-                          </button>
-                          <button
-                            onClick={() => handleSelectPixabayTrack(track)}
-                            disabled={bgmLoading}
-                            className="w-6 h-6 rounded-full bg-gray-700/50 hover:bg-pink-600/30 text-gray-400 hover:text-pink-300 flex items-center justify-center transition-colors disabled:opacity-50"
-                            title="选择"
-                          >
-                            <Check className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                </>
-              )}
+              </>
+
             </div>
           </div>
         </div>
