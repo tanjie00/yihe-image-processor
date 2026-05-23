@@ -249,7 +249,7 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       // 内置音乐使用 builtin: 前缀，自定义音乐使用 File 对象
       const audioSource = track.isBuiltIn ? `builtin:${track.id}` : track.url;
       if (!audioSource) throw new Error('无可用音频源');
-      const buffer = await decodeBgmAudio(audioSource);
+      const buffer = await decodeBgmAudio(audioSource, track.filePath);
       setBgmAudioBuffer(buffer);
     } catch (err: any) {
       setBgmError(`加载失败: ${err.message}`);

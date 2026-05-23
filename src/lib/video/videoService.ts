@@ -370,8 +370,39 @@ async function generateVideoFast(
 
   // 创建 AudioEncoder（如果有背景音乐）
   let audioEncoder: AudioEncoder | null = null;
+  let audioEncoderError: Error | null = null;
   if (audioData) {
-    let audioEncoderError: Error | null = null;
+    // 检测 AAC 编码器支持 — WebCodecs 使用 'mp4a.40.2' 而非 'aac'
+    let audioCodec = 'mp4a.40.2'; // AAC-LC
+    try {
+      const audioSupport = await AudioEncoder.isConfigSupported({
+        codec: audioCodec,
+        sampleRate: audioData.sampleRate,
+        numberOfChannels: audioData.numberOfChannels,
+        bitrate: 128000,
+      });
+      if (!audioSupport.supported) {
+        console.warn('mp4a.40.2 不支持，尝试 mp4a.40.5 (HE-AAC)...');
+        audioCodec = 'mp4a.40.5'; // HE-AAC
+        const audioSupport2 = await AudioEncoder.isConfigSupported({
+          codec: audioCodec,
+          sampleRate: audioData.sampleRate,
+          numberOfChannels: audioData.numberOfChannels,
+          bitrate: 128000,
+        });
+        if (!audioSupport2.supported) {
+          console.error('浏览器不支持 AAC 音频编码，将跳过背景音乐');
+          audioData = null; // 禁用音频
+        }
+      }
+    } catch (e) {
+      console.error('AudioEncoder.isConfigSupported 检查失败:', e);
+      audioData = null; // 禁用音频
+    }
+  }
+
+  if (audioData) {
+    const audioCodec = 'mp4a.40.2'; // 使用已验证的 codec
     audioEncoder = new AudioEncoder({
       output: (chunk, meta) => {
         if (!audioEncoderError) {
@@ -384,13 +415,24 @@ async function generateVideoFast(
       },
     });
 
-    audioEncoder.configure({
-      codec: 'aac',
-      sampleRate: audioData.sampleRate,
-      numberOfChannels: audioData.numberOfChannels,
-      bitrate: 128000,
-    });
+    try {
+      audioEncoder.configure({
+        codec: audioCodec,
+        sampleRate: audioData.sampleRate,
+        numberOfChannels: audioData.numberOfChannels,
+        bitrate: 128000,
+      });
+    } catch (e: any) {
+      console.error('AudioEncoder.configure 失败:', e);
+      audioEncoderError = e;
+      // 关闭编码器，视频将不带音频
+      try { audioEncoder.close(); } catch (_) {}
+      audioEncoder = null;
+      audioData = null;
+    }
+  }
 
+  if (audioData && audioEncoder) {
     // 编码音频数据（分块编码，每块 1024 采样）
     const aacFrameSize = 1024;
     const totalAudioFrames = audioData.samples[0].length;
@@ -399,14 +441,6 @@ async function generateVideoFast(
 
     for (let offset = 0; offset < totalAudioFrames; offset += aacFrameSize) {
       const frameCount = Math.min(aacFrameSize, totalAudioFrames - offset);
-      
-      // 构造交错 PCM 数据
-      const interleaved = new Float32Array(frameCount * audioData.numberOfChannels);
-      for (let i = 0; i < frameCount; i++) {
-        for (let ch = 0; ch < audioData.numberOfChannels; ch++) {
-          interleaved[i * audioData.numberOfChannels + ch] = audioData.samples[ch][offset + i];
-        }
-      }
 
       // 转换为 Planar Float32 格式（AudioData 要求的格式）
       const planarData = new Float32Array(frameCount * audioData.numberOfChannels);
@@ -429,6 +463,13 @@ async function generateVideoFast(
         audioDataChunk.close();
       } catch (e) {
         console.warn('Audio encode chunk failed:', e);
+        break; // 如果某个 chunk 编码失败，停止后续音频编码
+      }
+
+      // 检查 AudioEncoder 是否出错
+      if (audioEncoderError) {
+        console.error('音频编码过程中出错，停止音频编码:', audioEncoderError);
+        break;
       }
 
       audioTimestamp += frameCount * audioSampleDuration;
@@ -606,14 +647,38 @@ async function generateVideoFallback(
  * @returns 生成的视频 Blob（MP4 格式，兼容路径为 WebM）
  */
 /** 解码背景音乐为 AudioBuffer
- *  - 内置音乐：使用 Web Audio API 程序化生成
+ *  - 文件型内置音乐：从 /music/ 目录加载真实音频文件（优先）
+ *  - 程序化内置音乐：使用 Web Audio API 生成（文件不存在时回退）
  *  - 自定义上传：从 File 对象解码
  *  - 外部 URL：从网络下载并解码（已弃用，可能因 CORS 不可用）
  */
-export async function decodeBgmAudio(urlOrFile: string | File): Promise<AudioBuffer> {
-  // 内置音乐：使用 bgmGenerator 程序化生成
+export async function decodeBgmAudio(urlOrFile: string | File, trackFilePath?: string): Promise<AudioBuffer> {
+  // 内置音乐
   if (typeof urlOrFile === 'string' && urlOrFile.startsWith('builtin:')) {
     const trackId = urlOrFile.replace('builtin:', '');
+
+    // 优先尝试从文件加载（音质更好）
+    if (trackFilePath) {
+      const fileUrl = `/music/${trackFilePath}`;
+      try {
+        const audioCtx = new AudioContext();
+        try {
+          const response = await fetch(fileUrl);
+          if (response.ok) {
+            const arrayBuffer = await response.arrayBuffer();
+            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+            console.log(`从文件加载内置音乐: ${fileUrl}`);
+            return buffer;
+          }
+        } finally {
+          await audioCtx.close();
+        }
+      } catch (e) {
+        console.warn(`文件型音乐加载失败 (${fileUrl})，回退到程序化生成:`, e);
+      }
+    }
+
+    // 回退到程序化生成
     const { generateBgmAudioBuffer } = await import('./bgmGenerator');
     return generateBgmAudioBuffer(trackId);
   }
@@ -701,8 +766,16 @@ export async function generateVideo(
   if (supportsFastEncoding) {
     try {
       return await generateVideoFast(images, settings, onProgress, signal, bgmOptions);
-    } catch (err) {
-      if (hasBgm) throw err; // BGM 模式下不回退到 MediaRecorder
+    } catch (err: any) {
+      // BGM 模式下，如果失败则尝试不带音频重试
+      if (hasBgm) {
+        console.warn('带音频的视频合成失败，尝试不带音频重新合成:', err);
+        try {
+          return await generateVideoFast(images, settings, onProgress, signal, undefined);
+        } catch (retryErr) {
+          throw retryErr; // 不带音频也失败了，抛出错误
+        }
+      }
       console.warn('VideoEncoder 编码失败，回退到 MediaRecorder:', err);
       // 回退到兼容路径
     }

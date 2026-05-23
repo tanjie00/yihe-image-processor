@@ -52,7 +52,7 @@ try {
 }
 
 logToFile('========== 应用启动 ==========');
-logToFile(`版本: 1.7.0 (白屏修复版)`);
+logToFile(`版本: 1.8.0 (音乐合成修复版)`);
 logToFile(`平台: ${process.platform} ${process.arch}`);
 logToFile(`Electron: ${process.versions.electron}`);
 logToFile(`Chrome: ${process.versions.chrome}`);
@@ -132,6 +132,12 @@ const MIME_TYPES = {
   '.webp': 'image/webp',
   '.webm': 'video/webm',
   '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
   '.txt': 'text/plain; charset=utf-8',
   '.map': 'application/json',
   '.xml': 'application/xml',
