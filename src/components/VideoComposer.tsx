@@ -954,16 +954,15 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
         let savedCount = 0;
         let failedCount = 0;
 
-        // 先让用户选择保存目录（通过一次虚拟的临时文件+复制操作获取目录）
-        // 或者直接使用 copyTempFilesToDir 传入空 map 来弹出目录选择
+        // 先让用户选择保存目录（使用专用的 selectDirectory API）
         let targetDir: string | null = null;
         try {
-          const dirResult = await (window as any).electronAPI.copyTempFilesToDir({}, null);
-          if (!dirResult.success || !dirResult.targetDir) {
+          const dirResult = await (window as any).electronAPI.selectDirectory('选择视频保存目录');
+          if (!dirResult.success || !dirResult.directory) {
             // 用户取消
             return;
           }
-          targetDir = dirResult.targetDir;
+          targetDir = dirResult.directory;
         } catch (e: any) {
           if (e.message?.includes('取消') || e.message?.includes('cancelled')) return;
           console.warn('选择目录失败:', e);

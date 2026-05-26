@@ -3,8 +3,17 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
-// ==================== 关键修复：禁用硬件加速 ====================
+// ==================== 关键修复：命令行开关 ====================
 // 必须在 app.whenReady() 之前调用
+// --no-sandbox: Windows 便携版 EXE 从临时目录运行时需要此标志
+// --disable-gpu-sandbox: 防止 GPU 沙箱导致启动失败
+// --disable-software-rasterizer: 避免软件渲染器冲突
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
+
+// 禁用硬件加速 — 解决白屏问题（某些 GPU 驱动不兼容）
 app.disableHardwareAcceleration();
 
 // ==================== 日志系统 ====================
@@ -32,7 +41,7 @@ try {
 }
 
 logToFile('========== 应用启动 ==========');
-logToFile(`版本: 2.1.0 (便携版修复)`);
+logToFile(`版本: 2.2.0`);
 logToFile(`平台: ${process.platform} ${process.arch}`);
 logToFile(`Electron: ${process.versions.electron}`);
 logToFile(`Chrome: ${process.versions.chrome}`);
@@ -41,6 +50,7 @@ logToFile(`__dirname: ${__dirname}`);
 logToFile(`resourcesPath: ${process.resourcesPath}`);
 logToFile(`userData: ${app.getPath('userData')}`);
 logToFile(`exe路径: ${app.getPath('exe')}`);
+logToFile(`命令行开关: no-sandbox, disable-gpu-sandbox, disable-software-rasterizer`);
 logToFile(`硬件加速: 已禁用`);
 
 let splashWindow = null;
@@ -53,7 +63,6 @@ function findOutDir() {
   const candidates = [];
 
   // 优先级1: extraResources 方式 — out 目录在 resources/out/
-  // 这是 electron-builder 将 out/ 作为 extraResources 打包后的位置
   if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, 'out'));
   }
@@ -70,7 +79,6 @@ function findOutDir() {
   // Windows portable exe 的特殊路径
   if (process.platform === 'win32') {
     const exeDir = path.dirname(app.getPath('exe'));
-    // electron-builder portable 解压后的标准结构
     candidates.push(path.join(exeDir, 'resources', 'out'));
     candidates.push(path.join(exeDir, 'resources', 'app', 'out'));
     candidates.push(path.join(exeDir, 'out'));
@@ -83,10 +91,10 @@ function findOutDir() {
     logToFile(`  尝试: ${dir}`);
     try {
       const indexPath = path.join(dir, 'index.html');
-      // 使用 readFileSync 检测，因为 ASAR 内 fs.accessSync 可能不可靠
-      fs.readFileSync(indexPath, { encoding: 'utf-8', flag: 'r' });
-      logToFile(`  ✓ 找到: ${dir}`);
-      return dir;
+      if (fs.existsSync(indexPath)) {
+        logToFile(`  ✓ 找到: ${dir}`);
+        return dir;
+      }
     } catch (e) {
       // 继续尝试
     }
@@ -106,7 +114,6 @@ function findOutDir() {
     if (fs.existsSync(process.resourcesPath)) {
       for (const entry of fs.readdirSync(process.resourcesPath)) {
         logToFile(`  ${entry}`);
-        // 如果有 out 目录，列出其内容
         if (entry === 'out') {
           const outDir = path.join(process.resourcesPath, 'out');
           try {
@@ -130,27 +137,25 @@ function getIconPath() {
   if (process.platform === 'win32') {
     const icoPath = path.join(__dirname, 'icon.ico');
     try {
-      fs.accessSync(icoPath, fs.constants.R_OK);
-      return icoPath;
+      if (fs.existsSync(icoPath)) return icoPath;
     } catch (e) {}
   }
 
   // 其他平台使用 .png
   const pngPath = path.join(__dirname, 'icon.png');
   try {
-    fs.accessSync(pngPath, fs.constants.R_OK);
-    return pngPath;
+    if (fs.existsSync(pngPath)) return pngPath;
   } catch (e) {}
 
   // ASAR unpacked 路径
   if (process.resourcesPath) {
     const unpackedIco = path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'icon.ico');
     const unpackedPng = path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'icon.png');
-    try { fs.accessSync(unpackedIco, fs.constants.R_OK); return unpackedIco; } catch (e) {}
-    try { fs.accessSync(unpackedPng, fs.constants.R_OK); return unpackedPng; } catch (e) {}
+    try { if (fs.existsSync(unpackedIco)) return unpackedIco; } catch (e) {}
+    try { if (fs.existsSync(unpackedPng)) return unpackedPng; } catch (e) {}
   }
 
-  return undefined; // 没有找到图标，使用默认
+  return undefined;
 }
 
 // ==================== MIME 类型映射 ====================
@@ -187,14 +192,12 @@ const MIME_TYPES = {
 };
 
 // ==================== 本地 HTTP 服务器 ====================
-// 绑定到 127.0.0.1（仅本地），随机端口，不触发防火墙
-
 function startHttpServer(outDirPath) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       try {
-        // 解析 URL，去除查询参数
-        let urlPath = req.url.split('?')[0];
+        // 解码 URL 编码的路径
+        let urlPath = decodeURIComponent(req.url.split('?')[0]);
 
         // 默认指向 index.html
         if (urlPath === '/' || urlPath === '') {
@@ -208,16 +211,29 @@ function startHttpServer(outDirPath) {
         const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-        // 读取文件
-        const data = fs.readFileSync(filePath);
+        // 对于大文件使用流式传输，避免内存问题
+        const stat = fs.statSync(filePath);
         res.writeHead(200, {
           'Content-Type': contentType,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Access-Control-Allow-Origin': '*',
+          'Content-Length': stat.size,
         });
-        res.end(data);
+
+        const readStream = fs.createReadStream(filePath);
+        readStream.pipe(res);
+
+        readStream.on('error', (err) => {
+          logToFile(`流式传输错误: ${req.url} - ${err.message}`);
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+          }
+          res.end('Internal Server Error');
+        });
       } catch (err) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        if (!res.headersSent) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+        }
         res.end('Not Found: ' + req.url);
         logToFile(`HTTP 404: ${req.url} - ${err.message}`);
       }
@@ -243,9 +259,10 @@ function getSplashHtmlPath() {
   if (process.resourcesPath) {
     const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'electron', 'splash.html');
     try {
-      fs.accessSync(unpackedPath, fs.constants.R_OK);
-      logToFile(`使用 unpacked splash.html: ${unpackedPath}`);
-      return unpackedPath;
+      if (fs.existsSync(unpackedPath)) {
+        logToFile(`使用 unpacked splash.html: ${unpackedPath}`);
+        return unpackedPath;
+      }
     } catch (e) {}
   }
 
@@ -331,7 +348,24 @@ function createMainWindow() {
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       logToFile(`页面加载失败: ${errorCode} - ${errorDescription} (${validatedURL})`);
-      // 尝试使用 loadFile 回退
+
+      // 自动重试一次
+      if (!mainWindow._retried) {
+        mainWindow._retried = true;
+        logToFile('自动重试加载页面...');
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            if (serverPort && outDir) {
+              mainWindow.loadURL(`http://127.0.0.1:${serverPort}/index.html`);
+            } else if (outDir) {
+              mainWindow.loadFile(path.join(outDir, 'index.html'));
+            }
+          }
+        }, 2000);
+        return;
+      }
+
+      // 重试也失败，尝试使用 loadFile 回退
       if (outDir && !validatedURL.includes('file://')) {
         logToFile('尝试 loadFile 回退方案...');
         try {
@@ -361,12 +395,10 @@ function createMainWindow() {
 
     // ===== 加载页面 =====
     if (serverPort && outDir) {
-      // 使用本地 HTTP 服务器加载页面
       const appUrl = `http://127.0.0.1:${serverPort}/index.html`;
       logToFile(`使用 HTTP 服务器加载: ${appUrl}`);
       mainWindow.loadURL(appUrl);
     } else if (outDir) {
-      // 回退：直接加载本地文件（可能无法加载绝对路径资源）
       logToFile(`HTTP 服务器未启动，使用 loadFile 加载: ${outDir}`);
       mainWindow.loadFile(path.join(outDir, 'index.html'));
     } else {
@@ -376,7 +408,7 @@ function createMainWindow() {
 
     // ===== 超时保护 =====
     const showTimeout = setTimeout(() => {
-      if (mainWindow && !mainWindow.isVisible()) {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
         logToFile('超时：页面未触发 ready-to-show，强制显示窗口');
         if (splashWindow) {
           try { splashWindow.close(); } catch(e) {}
@@ -385,7 +417,7 @@ function createMainWindow() {
         mainWindow.show();
         mainWindow.focus();
       }
-    }, 10000);
+    }, 15000); // 增加到15秒
 
     mainWindow.once('ready-to-show', () => {
       clearTimeout(showTimeout);
@@ -547,6 +579,24 @@ ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
   }
 });
 
+// 专用：选择目录对话框
+ipcMain.handle('select-directory', async (event, title) => {
+  try {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: title || '选择保存目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+
+    if (canceled || !filePaths || filePaths.length === 0) {
+      return { success: false, directory: null };
+    }
+    return { success: true, directory: filePaths[0] };
+  } catch (err) {
+    logToFile(`选择目录错误: ${err.message}`);
+    return { success: false, directory: null };
+  }
+});
+
 // 批量保存文件到指定目录
 ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
   try {
@@ -577,11 +627,9 @@ ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
         }
 
         if (file.buffer) {
-          // 单个 buffer 方式
           const uint8Array = new Uint8Array(file.buffer);
           fs.writeFileSync(filePath, uint8Array);
         } else if (file.buffers && Array.isArray(file.buffers)) {
-          // 分块 buffer 方式（用于大文件）
           const writeStream = fs.createWriteStream(filePath);
           for (const chunk of file.buffers) {
             writeStream.write(Buffer.from(new Uint8Array(chunk)));
@@ -607,7 +655,7 @@ ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
   }
 });
 
-// 新增：保存视频 Blob 到临时文件（避免 IPC 传输大 ArrayBuffer）
+// 保存视频 Blob 到临时文件
 ipcMain.handle('save-blob-to-temp', async (event, { buffer, fileName }) => {
   try {
     const tempDir = path.join(app.getPath('userData'), 'temp-downloads');
@@ -625,7 +673,7 @@ ipcMain.handle('save-blob-to-temp', async (event, { buffer, fileName }) => {
   }
 });
 
-// 新增：从临时目录批量复制文件到目标目录
+// 从临时目录批量复制文件到目标目录
 ipcMain.handle('copy-temp-files-to-dir', async (event, { fileMap, targetDir }) => {
   try {
     if (!targetDir) {
@@ -674,7 +722,7 @@ ipcMain.handle('copy-temp-files-to-dir', async (event, { fileMap, targetDir }) =
   }
 });
 
-// 新增：清理临时文件
+// 清理临时文件
 ipcMain.handle('cleanup-temp-files', async (event, tempPaths) => {
   try {
     for (const tempPath of tempPaths) {
@@ -692,8 +740,7 @@ ipcMain.handle('cleanup-temp-files', async (event, tempPaths) => {
   }
 });
 
-// 新增：直接写入文件到用户选择目录（绕过 IPC 大小限制）
-// 渲染进程分块发送数据，主进程逐块写入文件
+// 分块写入文件
 ipcMain.handle('write-file-chunk', async (event, { filePath, data, append }) => {
   try {
     const dir = path.dirname(filePath);
@@ -737,10 +784,10 @@ app.whenReady().then(async () => {
     }
   }
 
-  // 创建启动画面（不依赖 HTTP 服务器）
+  // 创建启动画面
   createSplashWindow();
 
-  // 延迟创建主窗口（让启动画面展示）
+  // 延迟创建主窗口
   setTimeout(() => {
     createMainWindow();
   }, 800);
@@ -756,7 +803,6 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   logToFile('所有窗口已关闭');
-  // 关闭 HTTP 服务器
   if (httpServer) {
     try { httpServer.close(); } catch(e) {}
     httpServer = null;
@@ -768,7 +814,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   logToFile('应用退出中...');
-  // 关闭 HTTP 服务器
   if (httpServer) {
     try { httpServer.close(); } catch(e) {}
     httpServer = null;

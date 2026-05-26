@@ -1,6 +1,6 @@
 {
   "name": "yihe-image-processor",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "description": "一合图片处理 - 智能图片视频合成工具",
   "author": "一合",
@@ -27,7 +27,7 @@
     },
     "files": [
       "electron/**/*",
-      "out/**/*",
+      "!out/**/*",
       "!node_modules/**/*"
     ],
     "extraResources": [
