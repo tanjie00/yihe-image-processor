@@ -8,84 +8,84 @@
           "id": "builtin-music-1",
           "name": "背景音乐 1",
           "artist": "内置",
-          "duration": 252,
+          "duration": 129,
           "filePath": "1 (1).mp3"
         },
         {
           "id": "builtin-music-2",
           "name": "背景音乐 2",
           "artist": "内置",
-          "duration": 257,
+          "duration": 132,
           "filePath": "1 (2).mp3"
         },
         {
           "id": "builtin-music-3",
           "name": "背景音乐 3",
           "artist": "内置",
-          "duration": 293,
+          "duration": 150,
           "filePath": "1 (3).mp3"
         },
         {
           "id": "builtin-music-4",
           "name": "背景音乐 4",
           "artist": "内置",
-          "duration": 266,
+          "duration": 136,
           "filePath": "1 (4).mp3"
         },
         {
           "id": "builtin-music-5",
           "name": "背景音乐 5",
           "artist": "内置",
-          "duration": 185,
+          "duration": 95,
           "filePath": "1 (5).mp3"
         },
         {
           "id": "builtin-music-6",
           "name": "背景音乐 6",
           "artist": "内置",
-          "duration": 272,
+          "duration": 139,
           "filePath": "1 (6).mp3"
         },
         {
           "id": "builtin-music-7",
           "name": "背景音乐 7",
           "artist": "内置",
-          "duration": 179,
+          "duration": 92,
           "filePath": "1 (7).mp3"
         },
         {
           "id": "builtin-music-8",
           "name": "背景音乐 8",
           "artist": "内置",
-          "duration": 297,
+          "duration": 152,
           "filePath": "1 (8).mp3"
         },
         {
           "id": "builtin-music-9",
           "name": "背景音乐 9",
           "artist": "内置",
-          "duration": 245,
+          "duration": 125,
           "filePath": "1 (9).mp3"
         },
         {
           "id": "builtin-music-10",
           "name": "背景音乐 10",
           "artist": "内置",
-          "duration": 218,
+          "duration": 112,
           "filePath": "1 (10).mp3"
         },
         {
           "id": "builtin-music-11",
           "name": "背景音乐 11",
           "artist": "内置",
-          "duration": 257,
+          "duration": 132,
           "filePath": "1 (11).mp3"
         },
         {
           "id": "builtin-music-12",
           "name": "背景音乐 12",
           "artist": "内置",
-          "duration": 260,
+          "duration": 133,
           "filePath": "1 (12).mp3"
         }
       ]

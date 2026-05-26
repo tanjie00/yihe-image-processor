@@ -47,6 +47,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return ipcRenderer.invoke('cleanup-temp-files', tempPaths);
   },
 
+  /**
+   * 分块写入文件到磁盘（绕过 IPC 大小限制）
+   * 适用于大文件写入，渲染进程分块发送，主进程逐块写入
+   * filePath: 目标文件绝对路径
+   * data: ArrayBuffer 数据块
+   * append: 是否追加模式（false=创建新文件，true=追加到已有文件）
+   */
+  writeFileChunk: async (filePath, data, append) => {
+    return ipcRenderer.invoke('write-file-chunk', { filePath, data, append: !!append });
+  },
+
   /** 检测是否在 Electron 环境中运行 */
   isElectron: () => true,
 });
