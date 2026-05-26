@@ -57,10 +57,10 @@
           ]
         }
       ],
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "yihe-image-processor-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "yihe-image-processor-${version}.${ext}"
     }
   },
   "dependencies": {
