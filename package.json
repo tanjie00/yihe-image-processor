@@ -1,7 +1,8 @@
 {
   "name": "yihe-image-processor",
-  "version": "1.8.0",
-  "description": "一合图片处理 - AI去水印 + 视频合成",
+  "version": "2.3.0",
+  "description": "一合图片处理 - 智能图片视频合成工具",
+  "author": "一合",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
@@ -9,10 +10,9 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
-    "electron:dev": "next build && electron .",
-    "electron:start": "electron .",
-    "electron:build": "next build && electron-builder --win",
-    "electron:build:mac": "next build && electron-builder --mac",
+    "electron": "electron .",
+    "electron:dev": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder --win portable",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -21,46 +21,44 @@
   "build": {
     "appId": "com.yihe.image-processor",
     "productName": "一合图片处理",
+    "copyright": "Copyright © 2025 一合",
     "directories": {
       "output": "dist-electron"
     },
     "files": [
       "electron/**/*",
-      "out/**/*",
-      "!node_modules",
-      "!src",
-      "!prisma",
-      "!db",
-      "!.next",
-      "!download",
-      "!upload",
-      "!examples",
-      "!Caddyfile"
+      "!out/**/*",
+      "!node_modules/**/*"
     ],
-    "extraResources": [],
+    "extraResources": [
+      {
+        "from": "out",
+        "to": "out",
+        "filter": ["**/*"]
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "electron/splash.html",
+      "electron/icon.ico",
+      "electron/icon.png"
+    ],
+    "npmRebuild": false,
     "win": {
+      "icon": "electron/icon.ico",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false,
       "target": [
         {
           "target": "portable",
           "arch": ["x64"]
         }
       ],
-      "icon": "electron/icon.ico",
-      "artifactName": "一合图片处理-v${version}-portable.exe",
-      "signAndEditExecutable": false,
-      "forceCodeSigning": false
+      "artifactName": "yihe-image-processor-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "一合图片处理-v${version}-portable.exe"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "electron/icon.ico"
-    },
-    "asar": true,
-    "asarUnpack": [
-      "out/**/*"
-    ]
+      "artifactName": "yihe-image-processor-${version}.${ext}"
+    }
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

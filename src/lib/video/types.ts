@@ -31,6 +31,8 @@ export interface VideoSettings {
   audioFile?: File;
   /** 背景音乐音量 0~1 */
   audioVolume?: number;
+  /** 预解码的 AudioBuffer（内置音乐使用） */
+  audioBuffer?: AudioBuffer;
 }
 
 /** 视频生成进度信息 */
@@ -45,4 +47,16 @@ export interface VideoProgress {
   percent: number;
   /** 背景音乐编码是否失败 */
   bgmFailed?: boolean;
+}
+
+/** 背景音乐轨道类型 */
+export interface BgmTrack {
+  id: string;
+  name: string;
+  artist: string;
+  duration: number;
+  category: string;
+  isBuiltIn?: boolean;
+  url?: string;
+  filePath?: string;
 }

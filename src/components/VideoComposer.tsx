@@ -10,16 +10,20 @@ import {
 } from 'lucide-react';
 import {
   generateVideo,
+  decodeBgmAudio,
   getAspectRatioResolution,
   TRANSITION_LABELS,
   supportsFastEncoding,
+  getOutputExtension,
 } from '@/lib/video/videoService';
 import type {
   VideoAspectRatio,
   TransitionTypeName,
   VideoSettings,
   VideoProgress,
+  BgmTrack,
 } from '@/lib/video/types';
+import { getTrackById, formatTrackDuration, loadBgmManifest, getMusicFileUrl } from '@/lib/video/bgmLibrary';
 
 // ==================== Types ====================
 
@@ -109,12 +113,19 @@ export function VideoComposer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Background music state
-  const [bgmFile, setBgmFile] = useState<File | null>(null);
   const [bgmVolume, setBgmVolume] = useState(0.5);
-  const [bgmPlaying, setBgmPlaying] = useState(false);
-  const [bgmWarning, setBgmWarning] = useState<string | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmInputRef = useRef<HTMLInputElement>(null);
+
+  // Built-in BGM state
+  const [selectedBgmId, setSelectedBgmId] = useState<string | null>(null);
+  const [bgmAudioBuffer, setBgmAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [bgmLoading, setBgmLoading] = useState(false);
+  const [bgmError, setBgmError] = useState<string | null>(null);
+  const [bgmSearchQuery, setBgmSearchQuery] = useState('');
+  const [customBgmFile, setCustomBgmFile] = useState<File | null>(null);
+  const [isBgmPlaying, setIsBgmPlaying] = useState(false);
+  const [bgmCategories, setBgmCategories] = useState<any[]>([]);
 
   // Collapsible sections state
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set(['transition', 'time', 'quality', 'bgm']));
@@ -159,11 +170,54 @@ export function VideoComposer() {
   };
 
   // ==================== BGM Controls ====================
-  const handleBgmUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectBgm = useCallback(async (track: BgmTrack) => {
+    // Stop any currently playing BGM
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current = null;
+    }
+    setIsBgmPlaying(false);
+
+    if (selectedBgmId === track.id) {
+      // Deselect
+      setSelectedBgmId(null);
+      setBgmAudioBuffer(null);
+      return;
+    }
+
+    setSelectedBgmId(track.id);
+    setBgmError(null);
+    setBgmLoading(true);
+    setBgmAudioBuffer(null);
+
+    try {
+      if (track.filePath) {
+        const buffer = await decodeBgmAudio(track.filePath);
+        if (buffer) {
+          setBgmAudioBuffer(buffer);
+        } else {
+          setBgmError(`无法加载: ${track.name}`);
+        }
+      } else if (track.url) {
+        const response = await fetch(track.url);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioCtx = new AudioContext({ sampleRate: 48000 });
+        const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+        await audioCtx.close();
+        setBgmAudioBuffer(buffer);
+      }
+    } catch (err) {
+      console.error('BGM load failed:', err);
+      setBgmError(`加载失败: ${track.name}`);
+    } finally {
+      setBgmLoading(false);
+    }
+  }, [selectedBgmId]);
+
+  const handleCustomBgmUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // More permissive format check - support common audio formats
     const audioExtensions = /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|webm)$/i;
     const isAudioType = file.type.startsWith('audio/') || file.type === 'application/octet-stream';
     const isAudioExt = audioExtensions.test(file.name);
@@ -173,89 +227,68 @@ export function VideoComposer() {
       return;
     }
 
-    // Validate the audio file is actually playable by the browser
-    const testUrl = URL.createObjectURL(file);
-    const testAudio = new Audio();
-    testAudio.preload = 'auto'; // Load full audio for thorough validation
-
-    const acceptBgm = () => {
-      clearTimeout(validationTimeout);
-      URL.revokeObjectURL(testUrl);
-      testAudio.src = '';
-      // Stop any currently playing BGM
-      if (bgmAudioRef.current) {
-        bgmAudioRef.current.pause();
-        bgmAudioRef.current = null;
-      }
-      setBgmFile(file);
-      setBgmPlaying(false);
-      setBgmWarning(null); // Clear any previous warning
-    };
-
-    const rejectBgm = (reason: string) => {
-      clearTimeout(validationTimeout);
-      URL.revokeObjectURL(testUrl);
-      testAudio.src = '';
-      console.error('Audio validation failed:', reason, '| file:', file.name, 'type:', file.type, 'size:', file.size);
-      alert(`无法加载该音频文件，请尝试其他格式\n文件: ${file.name}\n原因: ${reason}\n推荐使用 MP3 或 WAV 格式`);
-    };
-
-    // Success: browser can play this audio
-    testAudio.oncanplaythrough = () => acceptBgm();
-
-    // Error: browser cannot decode/play this format
-    testAudio.onerror = () => rejectBgm('浏览器不支持该音频编码');
-
-    // Timeout fallback - if validation takes too long, accept the file anyway
-    // (some formats may not trigger oncanplaythrough but still work during video encoding)
-    const validationTimeout = setTimeout(() => {
-      console.warn('BGM validation timeout, accepting file:', file.name);
-      acceptBgm();
-    }, 8000);
-
-    testAudio.src = testUrl;
-    e.target.value = '';
-  };
-
-  const toggleBgmPlayback = () => {
-    if (!bgmFile) return;
-    if (bgmPlaying && bgmAudioRef.current) {
-      bgmAudioRef.current.pause();
-      setBgmPlaying(false);
-    } else {
-      if (bgmAudioRef.current) {
-        bgmAudioRef.current.pause();
-      }
-      try {
-        const audio = new Audio(URL.createObjectURL(bgmFile));
-        audio.volume = bgmVolume;
-        audio.onended = () => setBgmPlaying(false);
-        audio.onerror = () => {
-          setBgmPlaying(false);
-          alert('音频播放失败，该格式可能不受浏览器支持，请尝试 MP3 或 WAV 格式');
-        };
-        audio.play().catch(err => {
-          setBgmPlaying(false);
-          console.error('BGM play failed:', err);
-        });
-        bgmAudioRef.current = audio;
-        setBgmPlaying(true);
-      } catch (err) {
-        console.error('BGM playback error:', err);
-        alert('音频播放失败，请尝试其他格式');
-      }
-    }
-  };
-
-  const removeBgm = () => {
+    // Stop current BGM
     if (bgmAudioRef.current) {
       bgmAudioRef.current.pause();
       bgmAudioRef.current = null;
     }
-    setBgmFile(null);
-    setBgmPlaying(false);
-    setBgmWarning(null);
-  };
+    setIsBgmPlaying(false);
+
+    // Clear built-in selection
+    setSelectedBgmId(null);
+    setCustomBgmFile(file);
+    setBgmError(null);
+
+    e.target.value = '';
+  }, []);
+
+  const toggleBgmPlayback = useCallback(() => {
+    if (isBgmPlaying && bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      setIsBgmPlaying(false);
+      return;
+    }
+
+    // Determine audio source
+    let audioUrl: string | null = null;
+    const currentTrack = selectedBgmId ? getTrackById(selectedBgmId) : null;
+    if (currentTrack?.filePath) {
+      audioUrl = getMusicFileUrl(currentTrack.filePath);
+    } else if (customBgmFile) {
+      audioUrl = URL.createObjectURL(customBgmFile);
+    }
+
+    if (!audioUrl) return;
+
+    try {
+      if (bgmAudioRef.current) {
+        bgmAudioRef.current.pause();
+      }
+      const audio = new Audio(audioUrl);
+      audio.volume = bgmVolume;
+      audio.onended = () => setIsBgmPlaying(false);
+      audio.onerror = () => {
+        setIsBgmPlaying(false);
+      };
+      audio.play().catch(() => setIsBgmPlaying(false));
+      bgmAudioRef.current = audio;
+      setIsBgmPlaying(true);
+    } catch (err) {
+      console.error('BGM playback error:', err);
+    }
+  }, [isBgmPlaying, selectedBgmId, customBgmFile, bgmVolume]);
+
+  const removeBgm = useCallback(() => {
+    if (bgmAudioRef.current) {
+      bgmAudioRef.current.pause();
+      bgmAudioRef.current = null;
+    }
+    setIsBgmPlaying(false);
+    setSelectedBgmId(null);
+    setBgmAudioBuffer(null);
+    setCustomBgmFile(null);
+    setBgmError(null);
+  }, []);
 
   // Cleanup BGM audio on unmount
   useEffect(() => {
@@ -265,6 +298,13 @@ export function VideoComposer() {
         bgmAudioRef.current = null;
       }
     };
+  }, []);
+
+  // Load music manifest on mount
+  useEffect(() => {
+    loadBgmManifest().then(cats => {
+      setBgmCategories(cats);
+    });
   }, []);
 
   // ==================== File Handling ====================
@@ -572,8 +612,11 @@ export function VideoComposer() {
             settings.customHeight = customHeight;
           }
           // Pass background music settings
-          if (bgmFile) {
-            settings.audioFile = bgmFile;
+          if (bgmAudioBuffer) {
+            settings.audioBuffer = bgmAudioBuffer;
+            settings.audioVolume = bgmVolume;
+          } else if (customBgmFile) {
+            settings.audioFile = customBgmFile;
             settings.audioVolume = bgmVolume;
           }
 
@@ -581,10 +624,6 @@ export function VideoComposer() {
             setFolderGroups(prev => prev.map(g =>
               g.path === group.path ? { ...g, progress } : g
             ));
-            // Detect BGM encoding failure and show warning
-            if (progress.bgmFailed) {
-              setBgmWarning(`背景音乐 "${bgmFile?.name}" 编码失败，视频将以无声方式生成。建议使用 MP3 或 WAV 格式。`);
-            }
           };
 
           const blob = await generateVideo(imageElements, settings, onProgress, abortController.signal);
@@ -680,7 +719,18 @@ export function VideoComposer() {
       alert('视频文件不存在，请重新生成');
       return;
     }
-    await triggerDownload(group.videoBlob, `${group.name}_video.webm`);
+    
+    const isElectronEnv = !!(window as any).electronAPI;
+    if (isElectronEnv) {
+      const electronAPI = (window as any).electronAPI;
+      const buffer = await group.videoBlob.arrayBuffer();
+      const result = await electronAPI.saveFile(buffer, `${group.name}_video.${getOutputExtension()}`, 'video/webm');
+      if (!result.success && result.error !== '用户取消保存') {
+        alert('保存失败: ' + result.error);
+      }
+    } else {
+      await triggerDownload(group.videoBlob, `${group.name}_video.${getOutputExtension()}`);
+    }
   }, [triggerDownload]);
 
   const handleDownloadFolder = useCallback(async (group: FolderGroup) => {
@@ -690,23 +740,52 @@ export function VideoComposer() {
     }
     setIsDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+      const isElectronEnv = !!(window as any).electronAPI;
+      
+      if (isElectronEnv) {
+        // Electron: Save via IPC
+        const electronAPI = (window as any).electronAPI;
+        
+        const dirResult = await electronAPI.selectDirectory('选择保存目录');
+        if (!dirResult.success || !dirResult.directory) {
+          setIsDownloading(false);
+          return;
+        }
+        const targetDir = dirResult.directory;
 
-      // Add original images - preserve full folder path
-      for (const img of group.images) {
-        const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : img.name;
-        zip.file(imgPath, img.file);
+        // Save video
+        const videoPath = group.path 
+          ? `${group.path}/${group.name}_video.${getOutputExtension()}`
+          : `${group.name}_video.${getOutputExtension()}`;
+        const videoBuffer = await group.videoBlob.arrayBuffer();
+        await electronAPI.writeFileChunk(`${targetDir}/${videoPath}`, videoBuffer, false);
+
+        // Save images
+        for (const img of group.images) {
+          const imgPath = img.relativePath 
+            ? `${img.relativePath}/${img.name}` 
+            : `${group.path}/${img.name}`;
+          const imgBuffer = await img.file.arrayBuffer();
+          await electronAPI.writeFileChunk(`${targetDir}/${imgPath}`, imgBuffer, false);
+        }
+      } else {
+        // Browser: Use JSZip
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+
+        for (const img of group.images) {
+          const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : img.name;
+          zip.file(imgPath, img.file);
+        }
+
+        const videoPath = group.path ? `${group.path}/${group.name}_video.${getOutputExtension()}` : `${group.name}_video.${getOutputExtension()}`;
+        zip.file(videoPath, group.videoBlob);
+
+        const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+        await triggerDownload(blob, `${group.name}.zip`);
       }
-
-      // Add video - use full path for folder hierarchy
-      const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}_video.webm`;
-      zip.file(videoPath, group.videoBlob);
-
-      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      await triggerDownload(blob, `${group.name}.zip`);
     } catch (err) {
-      console.error('ZIP failed', err);
+      console.error('Download failed:', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
     } finally {
       setIsDownloading(false);
@@ -719,39 +798,114 @@ export function VideoComposer() {
       alert('没有已完成的视频可下载');
       return;
     }
-    if (completedGroups.length === 1) {
-      handleDownloadFolder(completedGroups[0]);
-      return;
-    }
 
     setIsDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+      // Use Electron IPC for large batches (avoids browser OOM)
+      const isElectronEnv = !!(window as any).electronAPI;
+      
+      if (isElectronEnv) {
+        // Electron: Save directly to disk via IPC
+        const electronAPI = (window as any).electronAPI;
+        
+        // Select directory
+        const dirResult = await electronAPI.selectDirectory('选择保存目录');
+        if (!dirResult.success || !dirResult.directory) {
+          setIsDownloading(false);
+          return;
+        }
+        const targetDir = dirResult.directory;
 
-      for (const group of completedGroups) {
-        if (!group.videoBlob) continue;
+        let savedCount = 0;
+        const errors: string[] = [];
 
-        // Add original images - preserve full folder path
-        for (const img of group.images) {
-          const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
-          zip.file(imgPath, img.file);
+        for (const group of completedGroups) {
+          if (!group.videoBlob) continue;
+
+          try {
+            // Save video file
+            const videoPath = group.path 
+              ? `${group.path}/${group.name}_video.${getOutputExtension()}`
+              : `${group.name}_video.${getOutputExtension()}`;
+            const videoBuffer = await group.videoBlob.arrayBuffer();
+            await electronAPI.writeFileChunk(
+              `${targetDir}/${videoPath}`,
+              videoBuffer,
+              false
+            );
+
+            // Save original images
+            for (const img of group.images) {
+              const imgPath = img.relativePath 
+                ? `${img.relativePath}/${img.name}` 
+                : `${group.path}/${img.name}`;
+              const imgBuffer = await img.file.arrayBuffer();
+              await electronAPI.writeFileChunk(
+                `${targetDir}/${imgPath}`,
+                imgBuffer,
+                false
+              );
+            }
+            savedCount++; // track progress
+          } catch (err: any) {
+            errors.push(`${group.name}: ${err.message || '保存失败'}`);
+          }
         }
 
-        // Add video - preserve full folder path
-        const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}/${group.name}_video.webm`;
-        zip.file(videoPath, group.videoBlob);
+        if (errors.length > 0) {
+          alert(`保存完成，但有 ${errors.length} 个错误:\n${errors.slice(0, 5).join('\n')}`);
+        }
+      } else {
+        // Browser: Use JSZip with chunked approach
+        const JSZip = (await import('jszip')).default;
+        const MAX_PER_ZIP = 100;
+        
+        if (completedGroups.length <= MAX_PER_ZIP) {
+          // Single ZIP
+          const zip = new JSZip();
+          for (const group of completedGroups) {
+            if (!group.videoBlob) continue;
+            for (const img of group.images) {
+              const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
+              zip.file(imgPath, img.file);
+            }
+            const videoPath = group.path ? `${group.path}/${group.name}_video.${getOutputExtension()}` : `${group.name}/${group.name}_video.${getOutputExtension()}`;
+            zip.file(videoPath, group.videoBlob);
+          }
+          const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+          await triggerDownload(blob, 'videos_batch.zip');
+        } else {
+          // Chunk into multiple ZIPs
+          const totalChunks = Math.ceil(completedGroups.length / MAX_PER_ZIP);
+          for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+            const chunkGroups = completedGroups.slice(chunkIdx * MAX_PER_ZIP, (chunkIdx + 1) * MAX_PER_ZIP);
+            const zip = new JSZip();
+            for (const group of chunkGroups) {
+              if (!group.videoBlob) continue;
+              for (const img of group.images) {
+                const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
+                zip.file(imgPath, img.file);
+              }
+              const videoPath = group.path ? `${group.path}/${group.name}_video.${getOutputExtension()}` : `${group.name}/${group.name}_video.${getOutputExtension()}`;
+              zip.file(videoPath, group.videoBlob);
+            }
+            const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+            const suffix = totalChunks > 1 ? `_part${chunkIdx + 1}` : '';
+            await triggerDownload(blob, `videos_batch${suffix}.zip`);
+            // Small delay between downloads
+            if (chunkIdx < totalChunks - 1) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+        }
       }
-
-      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      await triggerDownload(blob, 'videos_batch.zip');
     } catch (err) {
-      console.error('ZIP failed', err);
+      console.error('Download failed:', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
     } finally {
       setIsDownloading(false);
     }
-  }, [folderGroups, handleDownloadFolder, triggerDownload]);
+  }, [folderGroups, triggerDownload]);
 
   const handleClearAll = () => {
     folderGroups.forEach(g => { if (g.videoUrl) URL.revokeObjectURL(g.videoUrl); });
@@ -1011,90 +1165,129 @@ export function VideoComposer() {
             <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
               <Music className="w-4 h-4 text-pink-400" />
               背景音乐
+              {bgmAudioBuffer && <span className="text-[10px] text-emerald-400 ml-1">已选</span>}
             </label>
             <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isSectionCollapsed('bgm') ? '' : 'rotate-180'}`} />
           </button>
-          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('bgm') ? 'max-h-0' : 'max-h-[400px]'}`}>
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isSectionCollapsed('bgm') ? 'max-h-0' : 'max-h-[600px]'}`}>
             <div className="px-3 pb-3 space-y-3">
-              {!bgmFile ? (
+              {/* Current BGM indicator */}
+              {(bgmAudioBuffer || customBgmFile) && (
+                <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2.5">
+                  <Music className="w-4 h-4 text-pink-400 flex-shrink-0" />
+                  <span className="text-xs text-gray-300 truncate flex-1">
+                    {selectedBgmId ? getTrackById(selectedBgmId)?.name : customBgmFile?.name}
+                  </span>
+                  <button
+                    onClick={toggleBgmPlayback}
+                    className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                  >
+                    {isBgmPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3 ml-0.5" />}
+                  </button>
+                  <button
+                    onClick={removeBgm}
+                    className="w-7 h-7 rounded-md bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Volume slider */}
+              {(bgmAudioBuffer || customBgmFile) && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">音量</span>
+                    <span className="text-xs text-gray-500 font-mono">{Math.round(bgmVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={bgmVolume}
+                    onChange={e => setBgmVolume(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                  />
+                </div>
+              )}
+
+              {bgmLoading && (
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  加载音乐中...
+                </div>
+              )}
+
+              {bgmError && (
+                <div className="text-xs text-red-400 bg-red-900/20 rounded-lg p-2">
+                  {bgmError}
+                </div>
+              )}
+
+              {/* Search */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="搜索音乐..."
+                  value={bgmSearchQuery}
+                  onChange={e => setBgmSearchQuery(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 placeholder-gray-600 focus:border-pink-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Built-in music list */}
+              <div className="space-y-1 max-h-48 overflow-y-auto scrollbar-thin">
+                {bgmCategories.flatMap(cat => 
+                  cat.tracks
+                    .filter((track: BgmTrack) => 
+                      !bgmSearchQuery || track.name.toLowerCase().includes(bgmSearchQuery.toLowerCase())
+                    )
+                    .map((track: BgmTrack) => (
+                      <button
+                        key={track.id}
+                        onClick={() => handleSelectBgm(track)}
+                        className={`w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors text-xs ${
+                          selectedBgmId === track.id
+                            ? 'bg-pink-900/30 border border-pink-500/50 text-white'
+                            : 'bg-gray-800/50 hover:bg-gray-800 border border-transparent text-gray-400'
+                        }`}
+                      >
+                        <div className="w-6 h-6 rounded bg-gray-700 flex items-center justify-center flex-shrink-0">
+                          {selectedBgmId === track.id ? (
+                            <Volume2 className="w-3 h-3 text-pink-400" />
+                          ) : (
+                            <Music className="w-3 h-3 text-gray-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate">{track.name}</div>
+                          <div className="text-[10px] text-gray-600">
+                            {track.artist} · {formatTrackDuration(track.duration)}
+                          </div>
+                        </div>
+                      </button>
+                    ))
+                )}
+              </div>
+
+              {/* Custom upload */}
+              <div className="pt-1 border-t border-gray-700/50">
                 <button
                   onClick={() => bgmInputRef.current?.click()}
-                  className="w-full py-3 rounded-lg border-2 border-dashed border-gray-600 hover:border-violet-500 text-gray-400 hover:text-violet-300 flex items-center justify-center gap-2 transition-colors text-sm"
+                  className="w-full py-2.5 rounded-lg border-2 border-dashed border-gray-600 hover:border-pink-500 text-gray-400 hover:text-pink-300 flex items-center justify-center gap-2 transition-colors text-xs"
                 >
-                  <Upload className="w-4 h-4" />
-                  上传背景音乐
+                  <Upload className="w-3.5 h-3.5" />
+                  上传自定义音乐
                 </button>
-              ) : (
-                <div className="space-y-3">
-                  {/* Audio file info */}
-                  <div className="flex items-center gap-2 bg-gray-800 rounded-lg p-2.5">
-                    <Music className="w-4 h-4 text-pink-400 flex-shrink-0" />
-                    <span className="text-xs text-gray-300 truncate flex-1">{bgmFile.name}</span>
-                    <button
-                      onClick={toggleBgmPlayback}
-                      className="w-7 h-7 rounded-md bg-gray-700 hover:bg-violet-600 text-gray-300 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
-                      title={bgmPlaying ? '暂停' : '试听'}
-                    >
-                      {bgmPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      onClick={removeBgm}
-                      className="w-7 h-7 rounded-md bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
-                      title="移除"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Volume slider */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-300 flex items-center gap-1.5">
-                        <Volume2 className="w-3.5 h-3.5" />
-                        音量
-                      </span>
-                      <span className="text-xs text-gray-500 font-mono">{Math.round(bgmVolume * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={bgmVolume}
-                      onChange={e => {
-                        const vol = parseFloat(e.target.value);
-                        setBgmVolume(vol);
-                        if (bgmAudioRef.current) {
-                          bgmAudioRef.current.volume = vol;
-                        }
-                      }}
-                      className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                    />
-                  </div>
-                </div>
-              )}
-              <input
-                ref={bgmInputRef}
-                type="file"
-                accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm"
-                onChange={handleBgmUpload}
-                className="hidden"
-              />
-              {/* BGM Encoding Warning */}
-              {bgmWarning && (
-                <div className="flex items-start gap-2 bg-amber-900/30 border border-amber-700/40 rounded-lg p-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-amber-300 text-xs">{bgmWarning}</p>
-                    <button
-                      onClick={() => setBgmWarning(null)}
-                      className="text-amber-500 text-[10px] hover:text-amber-300 mt-1"
-                    >
-                      关闭提示
-                    </button>
-                  </div>
-                </div>
-              )}
+                <input
+                  ref={bgmInputRef}
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus"
+                  onChange={handleCustomBgmUpload}
+                  className="hidden"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -1188,10 +1381,10 @@ export function VideoComposer() {
                 并发×{CONCURRENCY}
               </span>
             )}
-            {bgmFile && (
+            {(bgmAudioBuffer || customBgmFile) && (
               <span className="text-pink-400 text-sm flex items-center gap-1">
                 <Music className="w-3 h-3" />
-                BGM: {bgmFile.name}
+                BGM: {selectedBgmId ? getTrackById(selectedBgmId)?.name : customBgmFile?.name}
               </span>
             )}
           </div>

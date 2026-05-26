@@ -14,10 +14,10 @@
 
 import { Muxer, ArrayBufferTarget } from 'webm-muxer';
 import { TRANSITIONS, drawImageCover } from './transitions';
-import type { VideoAspectRatio, TransitionTypeName, VideoSettings, VideoProgress } from './types';
+import type { VideoAspectRatio, TransitionTypeName, VideoSettings, VideoProgress, BgmTrack } from './types';
 
 // 重新导出类型
-export type { VideoAspectRatio, TransitionTypeName, VideoSettings, VideoProgress };
+export type { VideoAspectRatio, TransitionTypeName, VideoSettings, VideoProgress, BgmTrack };
 
 // ==================== 常量 ====================
 
@@ -54,6 +54,40 @@ const hasVideoFrame = typeof VideoFrame !== 'undefined';
 
 /** 是否支持快速编码路径 */
 export const supportsFastEncoding = hasVideoEncoder && hasVideoFrame;
+
+/** 检测是否支持 Worker 编码（多线程） */
+export const supportsWorkerEncoding = hasVideoEncoder && hasVideoFrame && typeof navigator !== 'undefined' && (navigator.hardwareConcurrency || 0) > 2;
+
+/** 检测是否支持 AudioEncoder */
+export const supportsAudioEncoding = typeof AudioEncoder !== 'undefined';
+
+/** 获取输出文件扩展名 */
+export function getOutputExtension(): string {
+  return 'webm';
+}
+
+/**
+ * 解码背景音乐为 AudioBuffer
+ * 用于内置音乐：先 fetch 音频文件，再解码为 AudioBuffer
+ */
+export async function decodeBgmAudio(filePath: string): Promise<AudioBuffer | null> {
+  try {
+    const url = `/music/${filePath}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('Failed to fetch BGM:', url, response.status);
+      return null;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const audioCtx = new AudioContext({ sampleRate: 48000 });
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    await audioCtx.close();
+    return audioBuffer;
+  } catch (err) {
+    console.error('Failed to decode BGM audio:', err);
+    return null;
+  }
+}
 
 // ==================== 辅助函数 ====================
 
@@ -141,6 +175,99 @@ function renderFrame(
     transitionRenderer(ctx, images[currentImageIndex], images[nextImageIndex], transitionProgress, width, height);
   } else {
     drawImageCover(ctx, images[currentImageIndex], width, height);
+  }
+}
+
+// ==================== 音频渲染辅助 ====================
+
+/**
+ * 将 AudioBuffer 渲染为指定时长和音量的新 AudioBuffer
+ * - 支持循环（音频比视频短时）
+ * - 应用音量
+ */
+async function renderAudioBuffer(
+  sourceBuffer: AudioBuffer,
+  volume: number,
+  targetDuration: number
+): Promise<AudioBuffer | null> {
+  try {
+    const targetSamples = Math.ceil(targetDuration * 48000);
+    const numberOfChannels = 2;
+
+    const offlineCtx = new OfflineAudioContext(numberOfChannels, targetSamples, 48000);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = sourceBuffer;
+
+    const gainNode = offlineCtx.createGain();
+    gainNode.gain.value = volume;
+
+    source.connect(gainNode);
+    gainNode.connect(offlineCtx.destination);
+    source.start(0);
+
+    if (sourceBuffer.duration < targetDuration) {
+      source.loop = true;
+    }
+
+    return await offlineCtx.startRendering();
+  } catch (err) {
+    console.error('renderAudioBuffer failed:', err);
+    return null;
+  }
+}
+
+/**
+ * 将已渲染的 AudioBuffer 编码为 Opus 格式
+ */
+async function encodeRenderedAudio(
+  renderedBuffer: AudioBuffer,
+  targetDuration: number,
+  signal?: AbortSignal
+): Promise<AudioEncodeResult | null> {
+  try {
+    if (typeof AudioEncoder === 'undefined') {
+      return null;
+    }
+
+    const targetSamples = Math.ceil(targetDuration * 48000);
+    const numberOfChannels = 2;
+    const chunks: EncodedAudioChunk[] = [];
+
+    const encoder = new AudioEncoder({
+      output: (chunk) => { chunks.push(chunk); },
+      error: (e) => { console.error('AudioEncoder error:', e); },
+    });
+
+    encoder.configure({
+      codec: 'opus',
+      sampleRate: 48000,
+      numberOfChannels,
+      bitrate: 128000,
+    });
+
+    const chunkSize = Math.floor(48000 * 0.02);
+    for (let offset = 0; offset < targetSamples; offset += chunkSize) {
+      if (signal?.aborted) break;
+      const frameCount = Math.min(chunkSize, targetSamples - offset);
+      const audioData = new AudioData({
+        format: 'f32-planar',
+        sampleRate: 48000,
+        numberOfFrames: frameCount,
+        numberOfChannels,
+        timestamp: Math.round(offset / 48000 * 1_000_000),
+        data: getAudioDataSlice(renderedBuffer, offset, frameCount, numberOfChannels),
+      });
+      encoder.encode(audioData);
+      audioData.close();
+    }
+
+    await encoder.flush();
+    encoder.close();
+
+    return { chunks, sampleRate: 48000, numberOfChannels };
+  } catch (err) {
+    console.error('encodeRenderedAudio failed:', err);
+    return null;
   }
 }
 
@@ -302,7 +429,24 @@ async function generateVideoFast(
   // 预编码音频（如果提供了背景音乐）
   let audioResult: AudioEncodeResult | null = null;
   let bgmEncodeFailed = false;
-  if (settings.audioFile) {
+  if (settings.audioBuffer) {
+    // 内置音乐：直接使用预解码的 AudioBuffer
+    onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0 });
+    try {
+      const renderedBuffer = await renderAudioBuffer(settings.audioBuffer, settings.audioVolume ?? 0.5, videoDuration);
+      if (renderedBuffer && typeof AudioEncoder !== 'undefined') {
+        audioResult = await encodeRenderedAudio(renderedBuffer, videoDuration, signal);
+      }
+      if (!audioResult) {
+        bgmEncodeFailed = true;
+        onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0, bgmFailed: true });
+      }
+    } catch (err) {
+      bgmEncodeFailed = true;
+      console.warn('BGM encoding from AudioBuffer failed:', err);
+      onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0, bgmFailed: true });
+    }
+  } else if (settings.audioFile) {
     onProgress?.({ phase: 'preparing', current: 0, total: 1, percent: 0 });
     audioResult = await encodeAudioToOpus(
       settings.audioFile,
