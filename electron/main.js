@@ -52,7 +52,7 @@ try {
 }
 
 logToFile('========== 应用启动 ==========');
-logToFile(`版本: 1.8.0 (音乐合成修复版)`);
+logToFile(`版本: 1.9.0 (批量下载修复 + 内置音乐更新)`);
 logToFile(`平台: ${process.platform} ${process.arch}`);
 logToFile(`Electron: ${process.versions.electron}`);
 logToFile(`Chrome: ${process.versions.chrome}`);
@@ -497,40 +497,62 @@ ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
   }
 });
 
-ipcMain.handle('save-files-to-dir', async (event, files) => {
+ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
   try {
-    const { canceled, filePath: dirPath } = await dialog.showOpenDialog(mainWindow, {
-      title: '选择保存目录',
-      properties: ['openDirectory', 'createDirectory'],
-    });
+    let targetDir = targetDirOverride;
 
-    if (canceled || !dirPath || dirPath.length === 0) {
-      return { success: false, savedCount: 0, errors: ['用户取消'] };
+    // 如果没有指定目录，弹出目录选择对话框
+    if (!targetDir) {
+      const { canceled, filePath: dirPath } = await dialog.showOpenDialog(mainWindow, {
+        title: '选择保存目录',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+
+      if (canceled || !dirPath || dirPath.length === 0) {
+        return { success: false, savedCount: 0, errors: ['用户取消'], targetDir: null };
+      }
+      targetDir = dirPath[0];
     }
 
-    const targetDir = dirPath[0];
     let savedCount = 0;
     const errors = [];
 
     for (const file of files) {
       try {
         const filePath = path.join(targetDir, file.fileName);
-        const uint8Array = new Uint8Array(file.buffer);
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) {
           fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(filePath, uint8Array);
+
+        if (file.buffer) {
+          // 单个 buffer 方式
+          const uint8Array = new Uint8Array(file.buffer);
+          fs.writeFileSync(filePath, uint8Array);
+        } else if (file.buffers && Array.isArray(file.buffers)) {
+          // 分块 buffer 方式（用于大文件，避免单个 ArrayBuffer 过大）
+          const writeStream = fs.createWriteStream(filePath);
+          for (const chunk of file.buffers) {
+            writeStream.write(Buffer.from(new Uint8Array(chunk)));
+          }
+          writeStream.end();
+          await new Promise((resolve, reject) => {
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+          });
+        }
         savedCount++;
       } catch (err) {
+        logToFile(`保存文件失败 ${file.fileName}: ${err.message}`);
         errors.push(`${file.fileName}: ${err.message}`);
       }
     }
 
-    return { success: true, savedCount, errors: errors.length > 0 ? errors : undefined };
+    logToFile(`批量保存完成: ${savedCount}/${files.length} 文件, 错误: ${errors.length}`);
+    return { success: true, savedCount, errors: errors.length > 0 ? errors : undefined, targetDir };
   } catch (err) {
     logToFile(`批量保存错误: ${err.message}`);
-    return { success: false, savedCount: 0, errors: [err.message] };
+    return { success: false, savedCount: 0, errors: [err.message], targetDir: null };
   }
 });
 

@@ -22,10 +22,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 批量保存文件到指定目录（弹出选择目录对话框）
    * @param {Array<{buffer: ArrayBuffer, fileName: string, mimeType: string}>} files
-   * @returns {Promise<{success: boolean, savedCount: number, errors?: string[]}>}
+   * @param {string|null} targetDir - 可选，如果提供则直接保存到此目录（不弹对话框）
+   * @returns {Promise<{success: boolean, savedCount: number, errors?: string[], targetDir?: string|null}>}
    */
-  saveFilesToDir: async (files) => {
-    return ipcRenderer.invoke('save-files-to-dir', files);
+  saveFilesToDir: async (files, targetDir) => {
+    return ipcRenderer.invoke('save-files-to-dir', files, targetDir || null);
   },
 
   /** 检测是否在 Electron 环境中运行 */

@@ -865,8 +865,9 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   };
 
   /**
-   * 下载所有已完成视频的 ZIP
-   * 每个子文件夹包含原始图片 + 视频文件
+   * 下载所有已完成视频 — 智能选择下载方式
+   * 少量文件：ZIP 打包下载
+   * 大量文件（≥5个文件夹或≥100张图片）：直接保存到目录（避免内存溢出）
    */
   const handleDownloadAll = async () => {
     const completedGroups = folderGroups.filter(g => g.isCompleted && g.videoBlob);
@@ -879,6 +880,16 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       return;
     }
 
+    // 计算总图片数
+    const totalImages = completedGroups.reduce((sum, g) => sum + g.images.length, 0);
+
+    // 大批量下载使用直接保存到目录的方式，避免创建巨型 ZIP 导致内存溢出
+    if (completedGroups.length >= 5 || totalImages >= 100) {
+      await handleDownloadAllToDir(completedGroups);
+      return;
+    }
+
+    // 小批量使用 ZIP
     setIsDownloading(true);
     try {
       const JSZip = (await import('jszip')).default;
@@ -904,6 +915,122 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       await downloadBlob(blob, 'videos_batch.zip');
     } catch (err: any) {
       console.error('批量 ZIP 下载失败:', err);
+      alert(`下载失败: ${err.message || '未知错误'}`);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  /**
+   * 大批量下载 — 直接保存到用户选择的目录
+   * 每个文件夹的图片和视频文件保持目录结构
+   * 避免创建巨型 ZIP 导致内存溢出或 IPC 传输失败
+   * 分批传输文件，每批最多 30 个文件，目录对话框只弹出一次
+   */
+  const handleDownloadAllToDir = async (groups: FolderGroup[]) => {
+    const isElectron = typeof window !== 'undefined' && (window as any).electronAPI?.isElectron?.();
+
+    setIsDownloading(true);
+    try {
+      // 构建文件列表（先不读取 buffer，按需读取以节省内存）
+      const fileEntries: { group: FolderGroup; type: 'video' | 'image'; imgIndex?: number }[] = [];
+      for (const group of groups) {
+        if (!group.videoBlob) continue;
+        fileEntries.push({ group, type: 'video' });
+        for (let i = 0; i < group.images.length; i++) {
+          fileEntries.push({ group, type: 'image', imgIndex: i });
+        }
+      }
+
+      if (fileEntries.length === 0) {
+        alert('没有可下载的文件');
+        return;
+      }
+
+      if (isElectron) {
+        // Electron 环境：分批保存文件到目录（对话框只弹出一次）
+        const BATCH_SIZE = 30; // 每批最多 30 个文件
+        let totalSaved = 0;
+        let savedTargetDir: string | null = null;
+
+        // 分批处理
+        for (let batchStart = 0; batchStart < fileEntries.length; batchStart += BATCH_SIZE) {
+          const batch = fileEntries.slice(batchStart, batchStart + BATCH_SIZE);
+          const files: { fileName: string; buffer: ArrayBuffer; mimeType: string }[] = [];
+
+          for (const entry of batch) {
+            const group = entry.group;
+            const folderPath = group.path || group.name;
+
+            if (entry.type === 'video') {
+              const videoFileName = getVideoFileName(group);
+              const videoBuffer = await group.videoBlob!.arrayBuffer();
+              files.push({
+                fileName: `${folderPath}/${videoFileName}`,
+                buffer: videoBuffer,
+                mimeType: group.videoBlob!.type || 'video/mp4',
+              });
+            } else if (entry.type === 'image') {
+              const img = group.images[entry.imgIndex!];
+              try {
+                const imgBuffer = await img.file.arrayBuffer();
+                const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${folderPath}/${img.name}`;
+                files.push({
+                  fileName: imgPath,
+                  buffer: imgBuffer,
+                  mimeType: img.file.type || 'image/jpeg',
+                });
+              } catch (err) {
+                console.warn(`读取图片失败: ${img.name}`, err);
+              }
+            }
+          }
+
+          if (files.length === 0) continue;
+
+          // 首次调用弹出目录选择对话框，后续使用已选择的目录
+          const result = await (window as any).electronAPI.saveFilesToDir(files, savedTargetDir);
+          if (result.success) {
+            totalSaved += result.savedCount;
+            if (!savedTargetDir && result.targetDir) {
+              savedTargetDir = result.targetDir;
+            }
+          } else if (result.errors?.some((e: string) => e.includes('取消'))) {
+            // 用户取消，停止后续批次
+            break;
+          }
+        }
+
+        if (totalSaved > 0) {
+          alert(`下载完成！已保存 ${totalSaved} 个文件`);
+        }
+      } else {
+        // 浏览器环境：逐个下载
+        let downloaded = 0;
+        for (const entry of fileEntries) {
+          const group = entry.group;
+          const folderPath = group.path || group.name;
+
+          try {
+            if (entry.type === 'video') {
+              const videoFileName = getVideoFileName(group);
+              await downloadBlob(group.videoBlob!, videoFileName);
+            } else if (entry.type === 'image') {
+              const img = group.images[entry.imgIndex!];
+              await downloadBlob(img.file, img.name);
+            }
+            downloaded++;
+            // 浏览器批量下载需要间隔，避免被拦截
+            if (downloaded % 5 === 0) {
+              await new Promise(r => setTimeout(r, 500));
+            }
+          } catch (err) {
+            console.warn('下载失败:', err);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('批量下载失败:', err);
       alert(`下载失败: ${err.message || '未知错误'}`);
     } finally {
       setIsDownloading(false);
