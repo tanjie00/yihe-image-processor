@@ -202,10 +202,20 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
 
   // 统一下载 Blob 的辅助函数：Electron 环境使用 IPC 保存，浏览器环境使用 <a> 元素
   const downloadBlob = useCallback(async (blob: Blob, fileName: string) => {
-    // Electron environment: use IPC to save file
+    // Electron environment: use temp file approach to avoid IPC size limits
     if (typeof window !== 'undefined' && (window as any).electronAPI?.isElectron?.()) {
       try {
+        // 先保存到临时文件，再弹出对话框保存到用户选择的位置
         const arrayBuffer = await blob.arrayBuffer();
+        const tempResult = await (window as any).electronAPI.saveBlobToTemp(arrayBuffer, fileName);
+        if (tempResult.success) {
+          // 使用 saveFile 弹出保存对话框
+          await (window as any).electronAPI.saveFile(arrayBuffer, fileName, blob.type);
+          // 清理临时文件
+          try { await (window as any).electronAPI.cleanupTempFiles([tempResult.tempPath]); } catch(e) {}
+          return;
+        }
+        // 如果临时文件方式失败，直接用 saveFile
         await (window as any).electronAPI.saveFile(arrayBuffer, fileName, blob.type);
         return;
       } catch (err: any) {
@@ -922,17 +932,16 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
   };
 
   /**
-   * 大批量下载 — 直接保存到用户选择的目录
-   * 每个文件夹的图片和视频文件保持目录结构
-   * 避免创建巨型 ZIP 导致内存溢出或 IPC 传输失败
-   * 分批传输文件，每批最多 30 个文件，目录对话框只弹出一次
+   * 大批量下载 — 先将文件保存到临时目录，再批量复制到目标目录
+   * 避免通过 IPC 传输大 ArrayBuffer 导致内存溢出
+   * 使用临时文件方式：先将每个视频/图片保存为主进程临时文件，最后统一复制
    */
   const handleDownloadAllToDir = async (groups: FolderGroup[]) => {
     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI?.isElectron?.();
 
     setIsDownloading(true);
     try {
-      // 构建文件列表（先不读取 buffer，按需读取以节省内存）
+      // 构建文件列表
       const fileEntries: { group: FolderGroup; type: 'video' | 'image'; imgIndex?: number }[] = [];
       for (const group of groups) {
         if (!group.videoBlob) continue;
@@ -948,61 +957,73 @@ export function VideoComposer({ pendingImport, onImportConsumed }: VideoComposer
       }
 
       if (isElectron) {
-        // Electron 环境：分批保存文件到目录（对话框只弹出一次）
-        const BATCH_SIZE = 30; // 每批最多 30 个文件
-        let totalSaved = 0;
-        let savedTargetDir: string | null = null;
+        // Electron 环境：使用临时文件方式
+        // 1. 逐个将视频/图片保存到主进程临时文件（避免 IPC 大数据传输）
+        // 2. 弹出一次目录选择对话框
+        // 3. 批量复制临时文件到目标目录
+        const tempFileMap: Record<string, string> = {}; // tempPath -> relativePath
+        const tempPaths: string[] = [];
+        let failedCount = 0;
 
-        // 分批处理
-        for (let batchStart = 0; batchStart < fileEntries.length; batchStart += BATCH_SIZE) {
-          const batch = fileEntries.slice(batchStart, batchStart + BATCH_SIZE);
-          const files: { fileName: string; buffer: ArrayBuffer; mimeType: string }[] = [];
+        for (const entry of fileEntries) {
+          const group = entry.group;
+          const folderPath = group.path || group.name;
 
-          for (const entry of batch) {
-            const group = entry.group;
-            const folderPath = group.path || group.name;
-
+          try {
             if (entry.type === 'video') {
               const videoFileName = getVideoFileName(group);
               const videoBuffer = await group.videoBlob!.arrayBuffer();
-              files.push({
-                fileName: `${folderPath}/${videoFileName}`,
-                buffer: videoBuffer,
-                mimeType: group.videoBlob!.type || 'video/mp4',
-              });
+              const tempResult = await (window as any).electronAPI.saveBlobToTemp(videoBuffer, `video_${group.path || group.name}_${videoFileName}`);
+              if (tempResult.success) {
+                tempFileMap[tempResult.tempPath] = `${folderPath}/${videoFileName}`;
+                tempPaths.push(tempResult.tempPath);
+              } else {
+                failedCount++;
+              }
             } else if (entry.type === 'image') {
               const img = group.images[entry.imgIndex!];
               try {
                 const imgBuffer = await img.file.arrayBuffer();
                 const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${folderPath}/${img.name}`;
-                files.push({
-                  fileName: imgPath,
-                  buffer: imgBuffer,
-                  mimeType: img.file.type || 'image/jpeg',
-                });
+                const safeTempName = `img_${entry.imgIndex!}_${img.name}`;
+                const tempResult = await (window as any).electronAPI.saveBlobToTemp(imgBuffer, safeTempName);
+                if (tempResult.success) {
+                  tempFileMap[tempResult.tempPath] = imgPath;
+                  tempPaths.push(tempResult.tempPath);
+                } else {
+                  failedCount++;
+                }
               } catch (err) {
                 console.warn(`读取图片失败: ${img.name}`, err);
+                failedCount++;
               }
             }
-          }
-
-          if (files.length === 0) continue;
-
-          // 首次调用弹出目录选择对话框，后续使用已选择的目录
-          const result = await (window as any).electronAPI.saveFilesToDir(files, savedTargetDir);
-          if (result.success) {
-            totalSaved += result.savedCount;
-            if (!savedTargetDir && result.targetDir) {
-              savedTargetDir = result.targetDir;
-            }
-          } else if (result.errors?.some((e: string) => e.includes('取消'))) {
-            // 用户取消，停止后续批次
-            break;
+          } catch (err) {
+            console.warn('保存临时文件失败:', err);
+            failedCount++;
           }
         }
 
-        if (totalSaved > 0) {
-          alert(`下载完成！已保存 ${totalSaved} 个文件`);
+        // 批量复制临时文件到目标目录
+        if (Object.keys(tempFileMap).length > 0) {
+          const copyResult = await (window as any).electronAPI.copyTempFilesToDir(tempFileMap);
+          if (copyResult.success) {
+            const msg = failedCount > 0
+              ? `下载完成！已保存 ${copyResult.savedCount} 个文件，${failedCount} 个文件失败`
+              : `下载完成！已保存 ${copyResult.savedCount} 个文件`;
+            alert(msg);
+          } else if (copyResult.errors?.some((e: string) => e.includes('取消'))) {
+            // 用户取消，清理临时文件
+          } else {
+            alert(`复制文件失败: ${copyResult.errors?.join('\n') || '未知错误'}`);
+          }
+        } else if (failedCount > 0) {
+          alert(`下载失败：所有文件保存失败`);
+        }
+
+        // 清理临时文件（如果还有残留）
+        if (tempPaths.length > 0) {
+          try { await (window as any).electronAPI.cleanupTempFiles(tempPaths); } catch(e) {}
         }
       } else {
         // 浏览器环境：逐个下载

@@ -10,10 +10,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * 保存文件到磁盘（弹出保存对话框）
-   * @param {ArrayBuffer} buffer - 文件数据
-   * @param {string} fileName - 默认文件名
-   * @param {string} mimeType - MIME 类型
-   * @returns {Promise<{success: boolean, path?: string, error?: string}>}
    */
   saveFile: async (buffer, fileName, mimeType) => {
     return ipcRenderer.invoke('save-file', { buffer, fileName, mimeType });
@@ -21,12 +17,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /**
    * 批量保存文件到指定目录（弹出选择目录对话框）
-   * @param {Array<{buffer: ArrayBuffer, fileName: string, mimeType: string}>} files
-   * @param {string|null} targetDir - 可选，如果提供则直接保存到此目录（不弹对话框）
-   * @returns {Promise<{success: boolean, savedCount: number, errors?: string[], targetDir?: string|null}>}
+   * 注意：每批文件数量不宜过多（建议≤10），避免 IPC 传输超限
    */
   saveFilesToDir: async (files, targetDir) => {
     return ipcRenderer.invoke('save-files-to-dir', files, targetDir || null);
+  },
+
+  /**
+   * 保存视频 Blob 到临时文件（避免通过 IPC 传输大 ArrayBuffer）
+   * 返回 { success: boolean, tempPath?: string }
+   */
+  saveBlobToTemp: async (buffer, fileName) => {
+    return ipcRenderer.invoke('save-blob-to-temp', { buffer, fileName });
+  },
+
+  /**
+   * 从临时目录批量复制文件到目标目录
+   * fileMap: { [tempPath: string]: relativePath: string }
+   * 返回 { success: boolean, savedCount: number, errors?: string[], targetDir?: string }
+   */
+  copyTempFilesToDir: async (fileMap, targetDir) => {
+    return ipcRenderer.invoke('copy-temp-files-to-dir', { fileMap, targetDir: targetDir || null });
+  },
+
+  /**
+   * 清理临时文件
+   */
+  cleanupTempFiles: async (tempPaths) => {
+    return ipcRenderer.invoke('cleanup-temp-files', tempPaths);
   },
 
   /** 检测是否在 Electron 环境中运行 */

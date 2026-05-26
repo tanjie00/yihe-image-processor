@@ -1,6 +1,6 @@
 {
   "name": "yihe-image-processor",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "private": true,
   "description": "一合图片处理 - 智能图片视频合成工具",
   "author": "一合",
@@ -12,9 +12,7 @@
     "lint": "eslint .",
     "electron": "electron .",
     "electron:dev": "npm run build && electron .",
-    "electron:build": "npm run build && electron-builder --win",
-    "electron:build:mac": "npm run build && electron-builder --mac",
-    "electron:build:linux": "npm run build && electron-builder --linux",
+    "electron:build": "npm run build && electron-builder --win portable",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -45,37 +43,11 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "artifactName": "${productName}-${version}.${ext}"
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "electron/icon.ico",
-      "uninstallerIcon": "electron/icon.ico",
-      "installerHeaderIcon": "electron/icon.ico",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "一合图片处理"
-    },
     "portable": {
-      "artifactName": "${productName}-${version}.${ext}"
-    },
-    "mac": {
-      "icon": "electron/icon.icns",
-      "target": "dmg",
-      "artifactName": "${productName}-${version}.${ext}"
-    },
-    "linux": {
-      "icon": "electron/icon.png",
-      "target": "AppImage",
       "artifactName": "${productName}-${version}.${ext}"
     }
   },

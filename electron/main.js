@@ -1,31 +1,10 @@
-const { app, BrowserWindow, screen, shell, Menu, ipcMain, dialog, protocol } = require('electron');
+const { app, BrowserWindow, screen, shell, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { pathToFileURL, fileURLToPath } = require('url');
+const http = require('http');
 
-// ==================== 关键修复：在 app.ready 之前注册自定义协议 ====================
-// 必须在 app.whenReady() 之前调用
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'app',
-    privileges: {
-      secure: true,
-      standard: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-      bypassCSP: true,
-      stream: true,
-    },
-  },
-]);
-
-// ==================== 关键修复：完全禁用硬件加速 ====================
-// 这是最彻底的白屏修复方案 — 用 CPU 软件渲染替代 GPU
-// 牺牲少量性能换取最大兼容性，解决所有 GPU 驱动兼容性问题
+// ==================== 关键修复：禁用硬件加速 ====================
 app.disableHardwareAcceleration();
-
-// 移除所有 GPU 相关标志（之前的标志可能在某些驱动上导致崩溃）
-// 不再需要 appendSwitch，因为已经禁用了硬件加速
 
 // ==================== 日志系统 ====================
 const LOG_FILE = path.join(app.getPath('userData'), 'app-debug.log');
@@ -52,7 +31,7 @@ try {
 }
 
 logToFile('========== 应用启动 ==========');
-logToFile(`版本: 1.9.0 (批量下载修复 + 内置音乐更新)`);
+logToFile(`版本: 2.0.0 (便携版修复)`);
 logToFile(`平台: ${process.platform} ${process.arch}`);
 logToFile(`Electron: ${process.versions.electron}`);
 logToFile(`Chrome: ${process.versions.chrome}`);
@@ -60,18 +39,19 @@ logToFile(`Node: ${process.versions.node}`);
 logToFile(`__dirname: ${__dirname}`);
 logToFile(`resourcesPath: ${process.resourcesPath}`);
 logToFile(`userData: ${app.getPath('userData')}`);
-logToFile(`LOG_FILE: ${LOG_FILE}`);
-logToFile(`硬件加速: 已禁用 (app.disableHardwareAcceleration)`);
+logToFile(`exe路径: ${app.getPath('exe')}`);
+logToFile(`硬件加速: 已禁用`);
 
 let splashWindow = null;
 let mainWindow = null;
+let httpServer = null;
+let serverPort = null;
 
 // ==================== 查找输出目录 ====================
 function findOutDir() {
-  // 按优先级尝试多个路径
   const candidates = [
-    path.join(__dirname, '..', 'out'),                    // 正常开发/unpacked
-    path.join(process.resourcesPath || '', 'out'),         // ASAR 打包后
+    path.join(__dirname, '..', 'out'),                    // 正常开发/unpacked/ASAR内
+    path.join(process.resourcesPath || '', 'out'),         // ASAR 打包后 resources/out
     path.join(__dirname, 'out'),                           // 同目录
     path.join(app.getAppPath(), 'out'),                    // app 路径
   ];
@@ -79,8 +59,15 @@ function findOutDir() {
   // Windows portable exe 的特殊路径
   if (process.platform === 'win32') {
     const exeDir = path.dirname(app.getPath('exe'));
+    // electron-builder portable 解压后的标准结构
+    candidates.push(path.join(exeDir, 'resources', 'app', 'out'));
     candidates.push(path.join(exeDir, 'resources', 'out'));
     candidates.push(path.join(exeDir, 'out'));
+    // 便携版可能解压到临时目录
+    candidates.push(path.join(process.resourcesPath, 'app', 'out'));
+    candidates.push(path.join(process.resourcesPath, 'app.asar', 'out'));
+    // 对于 ASAR 打包的情况
+    candidates.push(path.join(process.resourcesPath, 'app.asar.unpacked', 'out'));
   }
 
   logToFile('搜索输出目录:');
@@ -92,7 +79,7 @@ function findOutDir() {
       logToFile(`  ✓ 找到: ${dir}`);
       return dir;
     } catch (e) {
-      logToFile(`  ✗ 不存在或不可读`);
+      // 继续尝试
     }
   }
 
@@ -103,6 +90,12 @@ function findOutDir() {
     for (const entry of fs.readdirSync(path.join(__dirname, '..'))) {
       logToFile(`  ${entry}`);
     }
+    logToFile(`resourcesPath 目录内容:`);
+    if (fs.existsSync(process.resourcesPath)) {
+      for (const entry of fs.readdirSync(process.resourcesPath)) {
+        logToFile(`  ${entry}`);
+      }
+    }
   } catch (e) {
     logToFile(`无法列出目录: ${e.message}`);
   }
@@ -110,8 +103,7 @@ function findOutDir() {
   return null;
 }
 
-// ==================== 自定义协议处理 ====================
-// 使用 app:// 协议替代 HTTP 服务器，消除端口绑定和防火墙问题
+// ==================== MIME 类型映射 ====================
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -144,48 +136,55 @@ const MIME_TYPES = {
   '.ts': 'text/plain; charset=utf-8',
 };
 
-let outDir = null;
+// ==================== 本地 HTTP 服务器 ====================
+// 绑定到 127.0.0.1（仅本地），随机端口，不触发防火墙
 
-function registerAppProtocol() {
-  // 注意：protocol.registerSchemesAsPrivileged 已在文件顶部调用（必须在 app.ready 之前）
-  // 这里只注册协议处理逻辑（protocol.handle 在 app.ready 之后调用）
+function startHttpServer(outDirPath) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        // 解析 URL，去除查询参数
+        let urlPath = req.url.split('?')[0];
 
-  // 使用 handle 方式注册（Electron 25+ 推荐）
-  protocol.handle('app', (request) => {
-    try {
-      const url = new URL(request.url);
-      let urlPath = url.pathname;
+        // 默认指向 index.html
+        if (urlPath === '/' || urlPath === '') {
+          urlPath = '/index.html';
+        }
 
-      // 解码 URL 编码的路径
-      urlPath = decodeURIComponent(urlPath);
+        // 安全：防止路径遍历攻击
+        const safePath = path.normalize(urlPath).replace(/^(\.\.[\/\\])+/, '');
+        const filePath = path.join(outDirPath, safePath);
 
-      // 默认指向 index.html
-      if (urlPath === '/' || urlPath === '') {
-        urlPath = '/index.html';
-      }
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-      // 安全：防止路径遍历
-      const safePath = path.normalize(urlPath).replace(/^(\.\.[\/\\])+/, '');
-      const filePath = path.join(outDir, safePath);
-
-      const ext = path.extname(filePath).toLowerCase();
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-      // 同步读取文件
-      const data = fs.readFileSync(filePath);
-      return new Response(data, {
-        headers: {
+        // 读取文件
+        const data = fs.readFileSync(filePath);
+        res.writeHead(200, {
           'Content-Type': contentType,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-        },
-      });
-    } catch (err) {
-      logToFile(`协议处理错误: ${err.message} for ${request.url}`);
-      return new Response('Not Found', { status: 404 });
-    }
-  });
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(data);
+      } catch (err) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found: ' + req.url);
+        logToFile(`HTTP 404: ${req.url} - ${err.message}`);
+      }
+    });
 
-  logToFile('自定义协议 app:// 注册成功');
+    // 绑定到 127.0.0.1:0 — 随机端口，仅本地访问，不触发防火墙
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      logToFile(`本地 HTTP 服务器启动成功: http://127.0.0.1:${port}`);
+      resolve({ server, port });
+    });
+
+    server.on('error', (err) => {
+      logToFile(`HTTP 服务器启动失败: ${err.message}`);
+      reject(err);
+    });
+  });
 }
 
 // ==================== 窗口管理 ====================
@@ -195,15 +194,15 @@ function createSplashWindow() {
       width: 600,
       height: 400,
       frame: false,
-      transparent: true,
       resizable: false,
       alwaysOnTop: true,
       center: true,
       skipTaskbar: true,
+      // 不使用 transparent: true，因为禁用硬件加速后透明可能不工作
+      backgroundColor: '#0f0f23',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        offscreen: false,
       },
     });
 
@@ -233,12 +232,12 @@ function createMainWindow() {
       show: false,
       title: '一合图片处理',
       icon: path.join(__dirname, 'icon.png'),
+      backgroundColor: '#0f0f23',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        webSecurity: true,
+        webSecurity: false,  // 允许加载本地资源
         preload: path.join(__dirname, 'preload.js'),
-        offscreen: false,
         backgroundThrottling: false,
       },
     });
@@ -247,7 +246,6 @@ function createMainWindow() {
     mainWindow.setMenu(null);
 
     // ===== 页面加载事件 =====
-
     mainWindow.webContents.on('did-start-loading', () => {
       logToFile('页面开始加载...');
     });
@@ -258,7 +256,18 @@ function createMainWindow() {
 
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       logToFile(`页面加载失败: ${errorCode} - ${errorDescription} (${validatedURL})`);
-      showLoadError(errorCode, errorDescription, validatedURL);
+      // 尝试使用 loadFile 回退
+      if (outDir && !validatedURL.includes('file://')) {
+        logToFile('尝试 loadFile 回退方案...');
+        try {
+          mainWindow.loadFile(path.join(outDir, 'index.html'));
+        } catch (e) {
+          logToFile(`loadFile 回退失败: ${e.message}`);
+          showLoadError(errorCode, errorDescription, validatedURL);
+        }
+      } else {
+        showLoadError(errorCode, errorDescription, validatedURL);
+      }
     });
 
     // 渲染进程崩溃
@@ -267,71 +276,41 @@ function createMainWindow() {
       showCrashError(details.reason, details.exitCode);
     });
 
-    // GPU 进程崩溃
-    app.on('gpu-process-crashed', (event, killed) => {
-      logToFile(`GPU 进程崩溃: killed=${killed}`);
-    });
-
     // 控制台消息
     mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
       const levelNames = ['verbose', 'info', 'warning', 'error'];
-      if (level >= 1) { // info 及以上都记录
+      if (level >= 2) { // 只记录 warning 和 error
         logToFile(`[控制台 ${levelNames[level] || level}] ${message}`);
       }
     });
 
     // ===== 加载页面 =====
-
-    if (outDir) {
-      // 优先使用自定义 app:// 协议加载页面（消除 HTTP 服务器端口/防火墙问题）
-      const appUrl = 'app://./index.html';
-      logToFile(`使用自定义协议加载: ${appUrl}`);
-      logToFile(`输出目录: ${outDir}`);
-      
+    if (serverPort && outDir) {
+      // 使用本地 HTTP 服务器加载页面
+      const appUrl = `http://127.0.0.1:${serverPort}/index.html`;
+      logToFile(`使用 HTTP 服务器加载: ${appUrl}`);
       mainWindow.loadURL(appUrl);
-
-      // 备用方案：如果 3 秒后仍白屏，回退到 loadFile 方案
-      const fallbackTimer = setTimeout(() => {
-        try {
-          const currentUrl = mainWindow.webContents.getURL();
-          logToFile(`3秒后检查 - 当前URL: ${currentUrl}`);
-          // 如果还在加载中或页面看起来空白，尝试 loadFile 回退
-          if (currentUrl.includes('app://')) {
-            logToFile('尝试 loadFile 回退方案...');
-            const indexPath = path.join(outDir, 'index.html');
-            mainWindow.loadFile(indexPath);
-          }
-        } catch (e) {
-          logToFile(`回退检查失败: ${e.message}`);
-        }
-      }, 5000);
-
-      mainWindow.webContents.once('did-finish-load', () => {
-        clearTimeout(fallbackTimer);
-      });
-      mainWindow.webContents.once('did-fail-load', () => {
-        clearTimeout(fallbackTimer);
-      });
+    } else if (outDir) {
+      // 回退：直接加载本地文件（可能无法加载绝对路径资源）
+      logToFile(`HTTP 服务器未启动，使用 loadFile 加载: ${outDir}`);
+      mainWindow.loadFile(path.join(outDir, 'index.html'));
     } else {
       logToFile('无法找到输出目录，显示错误页面');
       showNoOutDirError();
     }
 
     // ===== 超时保护 =====
-
     const showTimeout = setTimeout(() => {
       if (mainWindow && !mainWindow.isVisible()) {
-        logToFile('⚠ 超时：页面未触发 ready-to-show，强制显示窗口');
+        logToFile('超时：页面未触发 ready-to-show，强制显示窗口');
         if (splashWindow) {
           try { splashWindow.close(); } catch(e) {}
           splashWindow = null;
         }
         mainWindow.show();
         mainWindow.focus();
-        // 自动打开 DevTools
-        try { mainWindow.webContents.openDevTools(); } catch(e) {}
       }
-    }, 8000);
+    }, 10000);
 
     mainWindow.once('ready-to-show', () => {
       clearTimeout(showTimeout);
@@ -342,12 +321,6 @@ function createMainWindow() {
       }
       mainWindow.show();
       mainWindow.focus();
-
-      // 开发调试：3秒后自动打开 DevTools
-      // 如果不需要可以注释掉
-      // setTimeout(() => {
-      //   try { mainWindow.webContents.openDevTools(); } catch(e) {}
-      // }, 3000);
     });
 
     mainWindow.on('closed', () => {
@@ -362,8 +335,9 @@ function createMainWindow() {
     });
 
     mainWindow.webContents.on('will-navigate', (event, url) => {
-      if (url.startsWith('app://')) return;
+      // 允许本地 HTTP 服务器和文件协议
       if (url.startsWith('http://127.0.0.1')) return;
+      if (url.startsWith('file://')) return;
       if (url.startsWith('http') || url.startsWith('https')) {
         event.preventDefault();
         shell.openExternal(url);
@@ -474,6 +448,7 @@ resourcesPath: ${process.resourcesPath}<br/>
 
 // ==================== IPC 处理器 ====================
 
+// 保存单个文件
 ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
   try {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -497,6 +472,7 @@ ipcMain.handle('save-file', async (event, { buffer, fileName, mimeType }) => {
   }
 });
 
+// 批量保存文件到指定目录
 ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
   try {
     let targetDir = targetDirOverride;
@@ -530,7 +506,7 @@ ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
           const uint8Array = new Uint8Array(file.buffer);
           fs.writeFileSync(filePath, uint8Array);
         } else if (file.buffers && Array.isArray(file.buffers)) {
-          // 分块 buffer 方式（用于大文件，避免单个 ArrayBuffer 过大）
+          // 分块 buffer 方式（用于大文件）
           const writeStream = fs.createWriteStream(filePath);
           for (const chunk of file.buffers) {
             writeStream.write(Buffer.from(new Uint8Array(chunk)));
@@ -556,23 +532,114 @@ ipcMain.handle('save-files-to-dir', async (event, files, targetDirOverride) => {
   }
 });
 
+// 新增：保存视频 Blob 到临时文件（避免 IPC 传输大 ArrayBuffer）
+ipcMain.handle('save-blob-to-temp', async (event, { buffer, fileName }) => {
+  try {
+    const tempDir = path.join(app.getPath('userData'), 'temp-downloads');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempPath = path.join(tempDir, fileName);
+    const uint8Array = new Uint8Array(buffer);
+    fs.writeFileSync(tempPath, uint8Array);
+    logToFile(`临时文件已保存: ${tempPath} (${uint8Array.length} bytes)`);
+    return { success: true, tempPath };
+  } catch (err) {
+    logToFile(`保存临时文件错误: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
+// 新增：从临时目录批量复制文件到目标目录
+ipcMain.handle('copy-temp-files-to-dir', async (event, { fileMap, targetDir }) => {
+  try {
+    if (!targetDir) {
+      const { canceled, filePath: dirPath } = await dialog.showOpenDialog(mainWindow, {
+        title: '选择保存目录',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+
+      if (canceled || !dirPath || dirPath.length === 0) {
+        return { success: false, savedCount: 0, errors: ['用户取消'], targetDir: null };
+      }
+      targetDir = dirPath[0];
+    }
+
+    let savedCount = 0;
+    const errors = [];
+
+    for (const [tempPath, relativePath] of Object.entries(fileMap)) {
+      try {
+        const destPath = path.join(targetDir, relativePath as string);
+        const dir = path.dirname(destPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.copyFileSync(tempPath, destPath);
+        savedCount++;
+      } catch (err) {
+        errors.push(`${relativePath}: ${err.message}`);
+      }
+    }
+
+    // 清理临时文件
+    try {
+      for (const tempPath of Object.keys(fileMap)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (e) {
+      // 忽略清理错误
+    }
+
+    logToFile(`批量复制完成: ${savedCount}/${Object.keys(fileMap).length} 文件`);
+    return { success: true, savedCount, errors: errors.length > 0 ? errors : undefined, targetDir };
+  } catch (err) {
+    logToFile(`批量复制错误: ${err.message}`);
+    return { success: false, savedCount: 0, errors: [err.message], targetDir: null };
+  }
+});
+
+// 新增：清理临时文件
+ipcMain.handle('cleanup-temp-files', async (event, tempPaths) => {
+  try {
+    for (const tempPath of tempPaths) {
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (e) {
+        // 忽略
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // ==================== 应用生命周期 ====================
+let outDir = null;
+
 app.whenReady().then(async () => {
   logToFile('App ready');
 
   // 查找输出目录
   outDir = findOutDir();
 
-  // 注册自定义协议（替代 HTTP 服务器）
-  try {
-    registerAppProtocol();
-  } catch (err) {
-    logToFile(`注册自定义协议失败: ${err.message}\n${err.stack}`);
-    // 回退到 HTTP 服务器方案
-    logToFile('尝试回退到 loadFile 方案...');
+  // 启动本地 HTTP 服务器
+  if (outDir) {
+    try {
+      const result = await startHttpServer(outDir);
+      httpServer = result.server;
+      serverPort = result.port;
+    } catch (err) {
+      logToFile(`HTTP 服务器启动失败，将使用 loadFile 回退: ${err.message}`);
+      httpServer = null;
+      serverPort = null;
+    }
   }
 
-  // 创建启动画面
+  // 创建启动画面（不依赖 HTTP 服务器）
   createSplashWindow();
 
   // 延迟创建主窗口（让启动画面展示）
@@ -589,6 +656,11 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   logToFile('所有窗口已关闭');
+  // 关闭 HTTP 服务器
+  if (httpServer) {
+    try { httpServer.close(); } catch(e) {}
+    httpServer = null;
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -596,6 +668,11 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   logToFile('应用退出中...');
+  // 关闭 HTTP 服务器
+  if (httpServer) {
+    try { httpServer.close(); } catch(e) {}
+    httpServer = null;
+  }
 });
 
 // 全局异常处理
