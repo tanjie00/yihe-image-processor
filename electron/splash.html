@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 600px;
+      height: 400px;
+      overflow: hidden;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    .splash-container {
+      width: 600px;
+      height: 400px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 30%, #2d1b69 60%, #1a1a3e 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Animated background particles */
+    .bg-particle {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(139, 92, 246, 0.15);
+      animation: float-particle 6s ease-in-out infinite;
+    }
+    .bg-particle:nth-child(1) { width: 200px; height: 200px; top: -50px; left: -50px; animation-delay: 0s; }
+    .bg-particle:nth-child(2) { width: 150px; height: 150px; bottom: -30px; right: -30px; animation-delay: 2s; background: rgba(59, 130, 246, 0.12); }
+    .bg-particle:nth-child(3) { width: 100px; height: 100px; top: 50%; left: 80%; animation-delay: 4s; background: rgba(236, 72, 153, 0.1); }
+
+    @keyframes float-particle {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(20px, -20px) scale(1.1); }
+    }
+
+    .icon-wrapper {
+      width: 120px;
+      height: 120px;
+      border-radius: 28px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 8px 32px rgba(139, 92, 246, 0.3);
+      background: rgba(255, 255, 255, 0.05);
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-emoji {
+      font-size: 64px;
+    }
+
+    .app-name {
+      font-size: 32px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+      position: relative;
+      z-index: 2;
+      letter-spacing: 4px;
+      text-shadow: 0 2px 20px rgba(139, 92, 246, 0.5);
+    }
+
+    .app-subtitle {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.5);
+      position: relative;
+      z-index: 2;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+    }
+
+    .loading-bar-container {
+      width: 240px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+      z-index: 2;
+    }
+
+    .loading-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #8b5cf6, #3b82f6, #ec4899);
+      border-radius: 2px;
+      animation: load-progress 2.5s ease-in-out forwards;
+    }
+
+    @keyframes load-progress {
+      0% { width: 0%; }
+      30% { width: 40%; }
+      60% { width: 70%; }
+      80% { width: 85%; }
+      100% { width: 95%; }
+    }
+
+    .loading-text {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.4);
+      margin-top: 12px;
+      position: relative;
+      z-index: 2;
+      animation: pulse-text 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-text {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="splash-container">
+    <div class="bg-particle"></div>
+    <div class="bg-particle"></div>
+    <div class="bg-particle"></div>
+
+    <div class="icon-wrapper">
+      <span class="icon-emoji">🖼️</span>
+    </div>
+
+    <div class="app-name">一合图片处理</div>
+    <div class="app-subtitle">智能图片 · 视频合成</div>
+
+    <div class="loading-bar-container">
+      <div class="loading-bar"></div>
+    </div>
+    <div class="loading-text">正在加载应用...</div>
+  </div>
+</body>
+</html>

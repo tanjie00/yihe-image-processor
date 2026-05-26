@@ -1,6 +1,6 @@
 {
   "name": "yihe-image-processor",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "一合图片处理 - AI去水印 + 视频合成",
   "main": "electron/main.js",
   "private": true,

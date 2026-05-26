@@ -55,6 +55,11 @@ const hasVideoFrame = typeof VideoFrame !== 'undefined';
 /** 是否支持快速编码路径 */
 export const supportsFastEncoding = hasVideoEncoder && hasVideoFrame;
 
+/** 获取输出视频的扩展名（不含点号） */
+export function getOutputExtension(): string {
+  return 'webm';
+}
+
 // ==================== 辅助函数 ====================
 
 /**

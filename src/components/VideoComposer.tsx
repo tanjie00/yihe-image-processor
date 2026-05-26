@@ -11,6 +11,7 @@ import {
 import {
   generateVideo,
   getAspectRatioResolution,
+  getOutputExtension,
   TRANSITION_LABELS,
   supportsFastEncoding,
 } from '@/lib/video/videoService';
@@ -112,7 +113,6 @@ export function VideoComposer() {
   const [bgmFile, setBgmFile] = useState<File | null>(null);
   const [bgmVolume, setBgmVolume] = useState(0.5);
   const [bgmPlaying, setBgmPlaying] = useState(false);
-  const [bgmWarning, setBgmWarning] = useState<string | null>(null);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmInputRef = useRef<HTMLInputElement>(null);
 
@@ -189,7 +189,6 @@ export function VideoComposer() {
       }
       setBgmFile(file);
       setBgmPlaying(false);
-      setBgmWarning(null); // Clear any previous warning
     };
 
     const rejectBgm = (reason: string) => {
@@ -254,7 +253,6 @@ export function VideoComposer() {
     }
     setBgmFile(null);
     setBgmPlaying(false);
-    setBgmWarning(null);
   };
 
   // Cleanup BGM audio on unmount
@@ -581,9 +579,9 @@ export function VideoComposer() {
             setFolderGroups(prev => prev.map(g =>
               g.path === group.path ? { ...g, progress } : g
             ));
-            // Detect BGM encoding failure and show warning
+            // Detect BGM encoding failure
             if (progress.bgmFailed) {
-              setBgmWarning(`背景音乐 "${bgmFile?.name}" 编码失败，视频将以无声方式生成。建议使用 MP3 或 WAV 格式。`);
+              console.warn(`背景音乐 "${bgmFile?.name}" 编码失败，视频将以无声方式生成。建议使用 MP3 或 WAV 格式。`);
             }
           };
 
@@ -680,7 +678,24 @@ export function VideoComposer() {
       alert('视频文件不存在，请重新生成');
       return;
     }
-    await triggerDownload(group.videoBlob, `${group.name}_video.webm`);
+    const ext = getOutputExtension();
+    const filename = `${group.name}_video.${ext}`;
+
+    // Electron environment: save directly to disk via IPC
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.saveFile) {
+      try {
+        const arrayBuffer = await group.videoBlob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        await electronAPI.saveFile(filename, uint8);
+        return;
+      } catch (err: any) {
+        if (err?.message?.includes('cancel') || err?.name === 'AbortError') return;
+        console.warn('Electron saveFile failed, falling back to browser download:', err);
+      }
+    }
+
+    await triggerDownload(group.videoBlob, filename);
   }, [triggerDownload]);
 
   const handleDownloadFolder = useCallback(async (group: FolderGroup) => {
@@ -689,7 +704,36 @@ export function VideoComposer() {
       return;
     }
     setIsDownloading(true);
+    const ext = getOutputExtension();
+
     try {
+      // Electron environment: save files directly to disk via IPC
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.selectDirectory && electronAPI?.writeFileChunk) {
+        try {
+          const dirResult = await electronAPI.selectDirectory();
+          if (!dirResult?.success || !dirResult.directory) return; // User cancelled
+          const dirPath = dirResult.directory;
+
+          // Write original images
+          for (const img of group.images) {
+            const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : img.name;
+            const imgBuffer = new Uint8Array(await img.file.arrayBuffer());
+            await electronAPI.writeFileChunk(`${dirPath}/${imgPath}`, imgBuffer);
+          }
+
+          // Write video
+          const videoPath = group.path ? `${group.path}/${group.name}_video.${ext}` : `${group.name}_video.${ext}`;
+          const videoBuffer = new Uint8Array(await group.videoBlob.arrayBuffer());
+          await electronAPI.writeFileChunk(`${dirPath}/${videoPath}`, videoBuffer);
+          return;
+        } catch (err: any) {
+          if (err?.message?.includes('cancel') || err?.name === 'AbortError') return;
+          console.warn('Electron IPC save failed, falling back to JSZip:', err);
+        }
+      }
+
+      // Browser: use JSZip
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
 
@@ -700,7 +744,7 @@ export function VideoComposer() {
       }
 
       // Add video - use full path for folder hierarchy
-      const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}_video.webm`;
+      const videoPath = group.path ? `${group.path}/${group.name}_video.${ext}` : `${group.name}_video.${ext}`;
       zip.file(videoPath, group.videoBlob);
 
       const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
@@ -725,26 +769,77 @@ export function VideoComposer() {
     }
 
     setIsDownloading(true);
+    const ext = getOutputExtension();
+
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+      // Electron environment: save files directly to disk via IPC — avoids browser memory limits
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.selectDirectory && electronAPI?.writeFileChunk) {
+        try {
+          const dirResult = await electronAPI.selectDirectory();
+          if (!dirResult?.success || !dirResult.directory) return; // User cancelled
+          const dirPath = dirResult.directory;
 
-      for (const group of completedGroups) {
-        if (!group.videoBlob) continue;
+          for (const group of completedGroups) {
+            if (!group.videoBlob) continue;
 
-        // Add original images - preserve full folder path
-        for (const img of group.images) {
-          const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
-          zip.file(imgPath, img.file);
+            // Write original images
+            for (const img of group.images) {
+              const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
+              const imgBuffer = new Uint8Array(await img.file.arrayBuffer());
+              await electronAPI.writeFileChunk(`${dirPath}/${imgPath}`, imgBuffer);
+            }
+
+            // Write video
+            const videoPath = group.path ? `${group.path}/${group.name}_video.${ext}` : `${group.name}/${group.name}_video.${ext}`;
+            const videoBuffer = new Uint8Array(await group.videoBlob.arrayBuffer());
+            await electronAPI.writeFileChunk(`${dirPath}/${videoPath}`, videoBuffer);
+          }
+          return;
+        } catch (err: any) {
+          if (err?.message?.includes('cancel') || err?.name === 'AbortError') return;
+          console.warn('Electron IPC save failed, falling back to chunked ZIP:', err);
         }
-
-        // Add video - preserve full folder path
-        const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}/${group.name}_video.webm`;
-        zip.file(videoPath, group.videoBlob);
       }
 
-      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      await triggerDownload(blob, 'videos_batch.zip');
+      // Browser: use JSZip but chunk into multiple ZIPs to avoid OOM
+      const MAX_PER_ZIP = 100;
+      const chunks: FolderGroup[][] = [];
+      for (let i = 0; i < completedGroups.length; i += MAX_PER_ZIP) {
+        chunks.push(completedGroups.slice(i, i + MAX_PER_ZIP));
+      }
+
+      const JSZip = (await import('jszip')).default;
+
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex];
+        const zip = new JSZip();
+
+        for (const group of chunk) {
+          if (!group.videoBlob) continue;
+
+          // Add original images - preserve full folder path
+          for (const img of group.images) {
+            const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
+            zip.file(imgPath, img.file);
+          }
+
+          // Add video - preserve full folder path
+          const videoPath = group.path ? `${group.path}/${group.name}_video.${ext}` : `${group.name}/${group.name}_video.${ext}`;
+          zip.file(videoPath, group.videoBlob);
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+        const zipName = chunks.length === 1
+          ? 'videos_batch.zip'
+          : `videos_batch_part${chunkIndex + 1}.zip`;
+        await triggerDownload(blob, zipName);
+
+        // Small delay between ZIP downloads to avoid browser throttling
+        if (chunkIndex < chunks.length - 1) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
@@ -1080,21 +1175,6 @@ export function VideoComposer() {
                 onChange={handleBgmUpload}
                 className="hidden"
               />
-              {/* BGM Encoding Warning */}
-              {bgmWarning && (
-                <div className="flex items-start gap-2 bg-amber-900/30 border border-amber-700/40 rounded-lg p-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-amber-300 text-xs">{bgmWarning}</p>
-                    <button
-                      onClick={() => setBgmWarning(null)}
-                      className="text-amber-500 text-[10px] hover:text-amber-300 mt-1"
-                    >
-                      关闭提示
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
