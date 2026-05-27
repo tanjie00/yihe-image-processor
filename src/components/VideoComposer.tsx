@@ -55,6 +55,58 @@ interface FolderTreeNode {
 
 const CONCURRENCY = 3; // Process up to 3 folders simultaneously
 
+const MAX_ZIP_TOTAL_BYTES = 1024 * 1024 * 1024; // 1GB
+
+async function generateVideoZipSafe(
+  files: { path: string; data: Blob | File }[],
+  zipFileName: string,
+  triggerDownload: (blob: Blob, filename: string) => Promise<void>,
+): Promise<void> {
+  if (files.length === 0) return;
+
+  // Estimate total size
+  let totalBytes = 0;
+  for (const f of files) totalBytes += f.data.size;
+
+  // If within limits, generate a single ZIP
+  if (totalBytes <= MAX_ZIP_TOTAL_BYTES) {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    for (const f of files) zip.file(f.path, f.data);
+    const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+    await triggerDownload(blob, zipFileName);
+    return;
+  }
+
+  // Split into multiple ZIPs
+  const baseName = zipFileName.replace(/\.zip$/i, '');
+  const chunks: { path: string; data: Blob | File }[][] = [];
+  let currentChunk: { path: string; data: Blob | File }[] = [];
+  let currentBytes = 0;
+
+  for (const f of files) {
+    if (currentBytes + f.data.size > MAX_ZIP_TOTAL_BYTES && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentBytes = 0;
+    }
+    currentChunk.push(f);
+    currentBytes += f.data.size;
+  }
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+
+  const paddedLen = String(chunks.length).length;
+  for (let i = 0; i < chunks.length; i++) {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    for (const f of chunks[i]) zip.file(f.path, f.data);
+    const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
+    const suffix = chunks.length === 1 ? '' : `_part${String(i + 1).padStart(paddedLen, '0')}`;
+    await triggerDownload(blob, `${baseName}${suffix}.zip`);
+    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   aspectRatio: '16:9',
   fps: 30,
@@ -690,21 +742,19 @@ export function VideoComposer() {
     }
     setIsDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+      const zipFiles: { path: string; data: Blob | File }[] = [];
 
       // Add original images - preserve full folder path
       for (const img of group.images) {
         const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : img.name;
-        zip.file(imgPath, img.file);
+        zipFiles.push({ path: imgPath, data: img.file });
       }
 
       // Add video - use full path for folder hierarchy
       const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}_video.webm`;
-      zip.file(videoPath, group.videoBlob);
+      zipFiles.push({ path: videoPath, data: group.videoBlob });
 
-      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      await triggerDownload(blob, `${group.name}.zip`);
+      await generateVideoZipSafe(zipFiles, `${group.name}.zip`, triggerDownload);
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));
@@ -726,8 +776,7 @@ export function VideoComposer() {
 
     setIsDownloading(true);
     try {
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+      const zipFiles: { path: string; data: Blob | File }[] = [];
 
       for (const group of completedGroups) {
         if (!group.videoBlob) continue;
@@ -735,16 +784,15 @@ export function VideoComposer() {
         // Add original images - preserve full folder path
         for (const img of group.images) {
           const imgPath = img.relativePath ? `${img.relativePath}/${img.name}` : `${group.path}/${img.name}`;
-          zip.file(imgPath, img.file);
+          zipFiles.push({ path: imgPath, data: img.file });
         }
 
         // Add video - preserve full folder path
         const videoPath = group.path ? `${group.path}/${group.name}_video.webm` : `${group.name}/${group.name}_video.webm`;
-        zip.file(videoPath, group.videoBlob);
+        zipFiles.push({ path: videoPath, data: group.videoBlob });
       }
 
-      const blob = await zip.generateAsync({ type: 'blob', streamFiles: true });
-      await triggerDownload(blob, 'videos_batch.zip');
+      await generateVideoZipSafe(zipFiles, 'videos_batch.zip', triggerDownload);
     } catch (err) {
       console.error('ZIP failed', err);
       alert('下载失败，请重试: ' + (err instanceof Error ? err.message : '未知错误'));

@@ -16,8 +16,8 @@ import { saveSettings, loadSettings, saveImages, loadImages, saveLogos, loadLogo
 import { VideoComposer } from '@/components/VideoComposer';
 
 // JSZip lazy-loaded on demand to reduce page load memory pressure
-const MAX_ZIP_ITEMS = 200;
-const MAX_ZIP_TOTAL_BYTES = 800 * 1024 * 1024; // 800 MB safety cap
+const MAX_ZIP_ITEMS = 500;
+const MAX_ZIP_TOTAL_BYTES = 1024 * 1024 * 1024; // 1 GB safety cap
 
 async function downloadZip(files: { path: string; data: Blob }[], zipFileName: string): Promise<void> {
   const JSZip = (await import('jszip')).default;
